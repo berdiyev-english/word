@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Гонки: только клавиатура + честный спавн</title>
+<style>
+  :root {
+    --w: 360px;
+    --h: 640px;
+    --hud-bg: rgba(0,0,0,.45);
+    --hud-text: #f2f2f2;
+    --accent: #00c896;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 800px at 50% -10%, #0b2e1f 0%, #061310 60%, #040a08 100%);
+    color: #e8e8e8;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Segoe UI Emoji";
+    display: grid;
+    place-items: center;
+  }
+  .wrap {
+    position: relative;
+    width: min(95vw, 420px);
+    aspect-ratio: 360/640;
+    max-height: 95vh;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06);
+    background: #1e1e1e;
+  }
+  .hud {
+    position: absolute;
+    inset: 10px 10px auto 10px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    background: var(--hud-bg);
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-weight: 600;
+    backdrop-filter: blur(6px);
+  }
+  .hud b { color: var(--accent); }
+
+  .help, .overlay {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    text-align: center;
+    background: var(--hud-bg);
+    padding: 14px 16px;
+    border-radius: 12px;
+    line-height: 1.4;
+    max-width: 90%;
+    backdrop-filter: blur(6px);
+    font-size: 14px;
+    pointer-events: none;
+    opacity: .95;
+    transition: opacity .25s ease;
+  }
+  .help.hide { opacity: 0; }
+  .overlay { display: none; font-weight: 700; }
+  .overlay.show { display: block; }
+  .badge {
+    display: inline-block;
+    border: 1px solid rgba(255,255,255,.25);
+    padding: 1px 6px;
+    border-radius: 6px;
+    margin: 0 2px;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(255,255,255,.08);
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="360" height="640"></canvas>
+
+    <div class="hud">
+      <div>Скорость: <b><span id="speed">0</span> км/ч</b></div>
+      <div>Дистанция: <b><span id="distance">0.00</span> км</b></div>
+    </div>
+
+    <div id="help" class="help">
+      Управление: <span class="badge">A</span>/<span class="badge">←</span> — влево,
+      <span class="badge">D</span>/<span class="badge">→</span> — вправо,
+      <span class="badge">P</span> — пауза.
+      При столкновении — <b>R</b> чтобы начать заново.
+    </div>
+
+    <div id="paused" class="overlay">Пауза</div>
+    <div id="gameover" class="overlay">
+      💥 Столкновение!<br/>
+      Дистанция: <span id="finalDistance">0.00</span> км<br/>
+      Нажми <span class="badge">R</span> чтобы сыграть ещё раз
+    </div>
+  </div>
+
+<script>
+(() => {
+  // Размеры
+  const W = 360, H = 640;
+
+  // Холст
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // HUD/overlays
+  const elSpeed = document.getElementById('speed');
+  const elDistance = document.getElementById('distance');
+  const elHelp = document.getElementById('help');
+  const elPaused = document.getElementById('paused');
+  const elGameOver = document.getElementById('gameover');
+  const elFinalDistance = document.getElementById('finalDistance');
+
+  // Дорога и полосы
+  const lanes = 3;
+  const roadMargin = 60;
+  const roadX = roadMargin;
+  const roadW = W - roadMargin * 2;
+  const laneW = roadW / lanes;
+
+  // Машины
+  const carW = Math.round(laneW * 0.58);
+  const carH = Math.round(laneW * 1.10);
+  const carY = H - carH - 18;
+
+  // Скорость дороги
+  const minSpeed = 150;
+  const maxSpeed = 420;
+  let roadSpeed = 180;
+  const accel = 25;
+
+  // Метры на пиксель
+  const M_PER_PX = 0.05;
+
+  // Игрок
+  let currentLane = 1;
+  let targetLane = 1;
+  let carX = laneCenter(currentLane) - carW / 2;
+  const carColor = '#ff3b3b';
+
+  // Трафик (рядовый спавн, всегда есть проход)
+  const cars = [];
+  let scrollAcc = 0;          // сколько пикселей «проскроллилось» с последнего ряда
+  let prevFreeLane = 1;       // свободная полоса предыдущего ряда
+
+  // Вспышка/тряска для удара (красиво на game over)
+  let hitFlash = 0;
+  let shakeT = 0;
+
+  // Состояние
+  let distanceMeters = 0;
+  let paused = false;
+  let gameOver = false;
+
+  // Утилиты
+  function laneCenter(i) { return roadX + laneW * i + laneW / 2; }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function choice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function lerp(a,b,t) { return a + (b - a) * t; }
+  function roundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // Ввод
+  document.addEventListener('keydown', (e) => {
+    const c = e.code;
+    if (gameOver) {
+      if (c === 'KeyR' || c === 'Enter' || c === 'Space') { e.preventDefault(); restart(); }
+      return;
+    }
+    if (c === 'ArrowLeft' || c === 'KeyA') { e.preventDefault(); moveLeft(); }
+    if (c === 'ArrowRight' || c === 'KeyD') { e.preventDefault(); moveRight(); }
+    if (c === 'KeyP') { e.preventDefault(); togglePause(); }
+  });
+
+  function moveLeft() {
+    targetLane = Math.max(0, targetLane - 1);
+    hideHelpSoon();
+  }
+  function moveRight() {
+    targetLane = Math.min(lanes - 1, targetLane + 1);
+    hideHelpSoon();
+  }
+  function togglePause() {
+    if (gameOver) return;
+    paused = !paused;
+    elPaused.classList.toggle('show', paused);
+  }
+
+  let helpHideTimer = null;
+  function hideHelpSoon() {
+    if (helpHideTimer) return;
+    helpHideTimer = setTimeout(() => elHelp.classList.add('hide'), 350);
+  }
+
+  // Цикл
+  let prev = performance.now();
+  requestAnimationFrame(loop);
+
+  function loop(t) {
+    const dt = Math.min(0.033, (t - prev) / 1000);
+    prev = t;
+
+    if (!paused && !gameOver) update(dt);
+    render();
+
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt) {
+    // Разгон
+    roadSpeed = clamp(roadSpeed + accel * dt, minSpeed, maxSpeed);
+
+    // Плавная смена полосы
+    const targetX = laneCenter(targetLane) - carW / 2;
+    const lerpK = 16; // резвее — легче перестраиваться
+    carX += (targetX - carX) * Math.min(1, dt * lerpK);
+
+    // Дистанция
+    distanceMeters += roadSpeed * dt * M_PER_PX;
+
+    // Рядовый спавн препятствий: всегда минимум одна свободная полоса.
+    // Гэп по пикселям зависит от скорости: быстрее -> чуть чаще ряды, но честно.
+    const speedT = (roadSpeed - minSpeed) / (maxSpeed - minSpeed); // 0..1
+    const rowGapPx = Math.round(lerp(230, 170, speedT));          // пикселей между рядами
+    scrollAcc += roadSpeed * dt;
+    if (scrollAcc >= rowGapPx) {
+      spawnRow(speedT);
+      scrollAcc = 0;
+    }
+
+    // Движение трафика
+    for (let i = cars.length - 1; i >= 0; i--) {
+      const o = cars[i];
+      o.y += (roadSpeed * o.speedMul) * dt;
+      if (o.y > H + 120) cars.splice(i, 1);
+    }
+
+    // Столкновения
+    const player = { x: carX, y: carY, w: carW, h: carH };
+    for (let i = 0; i < cars.length; i++) {
+      const o = cars[i];
+      if (!(player.x + player.w < o.x ||
+            player.x > o.x + o.w ||
+            player.y + player.h < o.y ||
+            player.y > o.y + o.h)) {
+        onHit();
+        break;
+      }
+    }
+
+    // Эффекты
+    if (hitFlash > 0) hitFlash -= dt;
+    if (shakeT > 0) shakeT -= dt;
+
+    // HUD
+    const kmh = roadSpeed * (M_PER_PX * 3.6);
+    elSpeed.textContent = Math.round(kmh);
+    elDistance.textContent = (distanceMeters / 1000).toFixed(2);
+  }
+
+  function spawnRow(speedT) {
+    // Выбираем свободную полосу в окрестности прошлой (чтобы можно было успеть перестроиться)
+    const delta = choice([-1, 0, 1]);
+    let freeLane = clamp(prevFreeLane + delta, 0, lanes - 1);
+
+    // Шанс поставить 2 машины (оставив 1 свободную) или 1 машину (оставив 2 свободные)
+    const twoCarsChance = 0.35 + 0.30 * speedT;
+    const spawnTwo = Math.random() < twoCarsChance;
+
+    const allLanes = [0,1,2];
+    const blocked = allLanes.filter(l => l !== freeLane);
+
+    let lanesToSpawn;
+    if (spawnTwo) {
+      lanesToSpawn = blocked; // две машины, одна свободная полоса
+    } else {
+      lanesToSpawn = [choice(blocked)]; // одна машина, две свободные
+    }
+
+    const palette = ['#40c4ff','#ffd740', '#ff7043', '#7e57c2', '#26a69a', '#ef5350', '#90caf9', '#81c784'];
+    const baseY = -carH - 20;
+
+    lanesToSpawn.forEach((lane, idx) => {
+      const x = laneCenter(lane) - carW / 2;
+      const y = baseY - (spawnTwo ? (idx === 0 ? 0 : Math.random()*14) : 0); // небольшой разброс в ряду
+      const color = choice(palette);
+      cars.push({
+        lane, x, y, w: carW, h: carH, color,
+        speedMul: 0.98 + Math.random() * 0.04 // почти одинаковая скорость — ряды сохраняют форму
+      });
+    });
+
+    prevFreeLane = freeLane;
+  }
+
+  function onHit() {
+    gameOver = true;
+    hitFlash = 0.35;
+    shakeT = 0.45;
+    elFinalDistance.textContent = (distanceMeters / 1000).toFixed(2);
+    elGameOver.classList.add('show');
+    elPaused.classList.remove('show');
+  }
+
+  function restart() {
+    // Сброс состояния
+    cars.length = 0;
+    distanceMeters = 0;
+    roadSpeed = 180;
+    currentLane = 1;
+    targetLane = 1;
+    carX = laneCenter(currentLane) - carW / 2;
+    prevFreeLane = 1;
+    scrollAcc = 0;
+    hitFlash = 0;
+    shakeT = 0;
+    gameOver = false;
+    paused = false;
+    elGameOver.classList.remove('show');
+    elPaused.classList.remove('show');
+    // Подсказку не возвращаем, чтобы не мешала
+  }
+
+  // Рендер
+  function render() {
+    const shakeAmt = (shakeT > 0) ? (6 * Math.pow(shakeT, 0.6)) : 0;
+    const sx = (Math.random() * 2 - 1) * shakeAmt;
+    const sy = (Math.random() * 2 - 1) * shakeAmt;
+
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    ctx.translate(sx, sy);
+
+    drawBackground();
+    drawRoad();
+    drawLaneMarks();
+    drawTraffic();
+    drawPlayer();
+
+    if (hitFlash > 0) {
+      const a = Math.max(0, Math.min(0.35, hitFlash * 1.5));
+      ctx.fillStyle = `rgba(255,0,0,${a})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    ctx.restore();
+  }
+
+  function drawBackground() {
+    const grd = ctx.createLinearGradient(0, 0, 0, H);
+    grd.addColorStop(0, '#0f6a3c');
+    grd.addColorStop(1, '#0b4d2d');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+  }
+  function drawRoad() {
+    const roadGr = ctx.createLinearGradient(0, 0, 0, H);
+    roadGr.addColorStop(0, '#2a2f35');
+    roadGr.addColorStop(1, '#1d2226');
+    ctx.fillStyle = roadGr;
+    ctx.fillRect(roadX, 0, roadW, H);
+    ctx.fillStyle = '#d0d0d0';
+    ctx.fillRect(roadX - 4, 0, 4, H);
+    ctx.fillRect(roadX + roadW, 0, 4, H);
+  }
+  function drawLaneMarks() {
+    ctx.save();
+    ctx.strokeStyle = '#e8e8e8';
+    ctx.lineWidth = 3;
+    const dash = [18, 18];
+    ctx.setLineDash(dash);
+    const dashOffset = (distanceMeters / M_PER_PX) % (dash[0] + dash[1]);
+    ctx.lineDashOffset = -dashOffset;
+    for (let i = 1; i < lanes; i++) {
+      const x = roadX + laneW * i;
+      ctx.beginPath();
+      ctx.moveTo(x, -20);
+      ctx.lineTo(x, H + 20);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function drawTraffic() {
+    for (const o of cars) drawCarShape(o.x, o.y, o.w, o.h, o.color, true);
+  }
+  function drawPlayer() {
+    drawCarShape(carX, carY, carW, carH, carColor, false);
+  }
+  function drawCarShape(x, y, w, h, color, withRoof) {
+    // Тень
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    roundRect(ctx, x + 4, y + 6, w, h, 10); ctx.fill();
+    // Корпус
+    const gr = ctx.createLinearGradient(x, y, x, y + h);
+    gr.addColorStop(0, lighten(color, 0.18));
+    gr.addColorStop(1, darken(color, 0.18));
+    ctx.fillStyle = gr;
+    roundRect(ctx, x, y, w, h, 12); ctx.fill();
+    // Стекла/детали
+    if (withRoof) {
+      ctx.fillStyle = 'rgba(255,255,255,0.13)';
+      roundRect(ctx, x + w*0.18, y + h*0.15, w*0.64, h*0.38, 8); ctx.fill();
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      roundRect(ctx, x + w*0.18, y + h*0.12, w*0.64, h*0.42, 8); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      roundRect(ctx, x + w*0.2, y + h*0.64, w*0.6, h*0.06, 6); ctx.fill();
+    }
+    // Колёса
+    ctx.fillStyle = '#111';
+    const wheelW = w * 0.22, wheelH = h * 0.18;
+    roundRect(ctx, x - wheelW * 0.6, y + h * 0.18, wheelW, wheelH, 4); ctx.fill();
+    roundRect(ctx, x - wheelW * 0.6, y + h * 0.66, wheelW, wheelH, 4); ctx.fill();
+    roundRect(ctx, x + w - wheelW * 0.4, y + h * 0.18, wheelW, wheelH, 4); ctx.fill();
+    roundRect(ctx, x + w - wheelW * 0.4, y + h * 0.66, wheelW, wheelH, 4); ctx.fill();
+  }
+
+  // Цветовые утилиты
+  function hexToRgb(hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : { r: 255, g: 64, b: 64 };
+  }
+  function rgbToHex({r,g,b}) {
+    return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+  }
+  function lighten(hex, p=0.1) {
+    const c = hexToRgb(hex);
+    c.r = Math.round(c.r + (255 - c.r) * p);
+    c.g = Math.round(c.g + (255 - c.g) * p);
+    c.b = Math.round(c.b + (255 - c.b) * p);
+    return rgbToHex(c);
+  }
+  function darken(hex, p=0.1) {
+    const c = hexToRgb(hex);
+    c.r = Math.round(c.r * (1 - p));
+    c.g = Math.round(c.g * (1 - p));
+    c.b = Math.round(c.b * (1 - p));
+    return rgbToHex(c);
+  }
+})();
+</script>
+</body>
+</html>
