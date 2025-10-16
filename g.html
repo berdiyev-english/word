@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Cube Dash — раннер в стиле Geometry Dash</title>
+<style>
+  :root {
+    --hud-bg: rgba(0,0,0,.45);
+    --accent: #00d6a1;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 800px at 50% -10%, #0a1a26 0%, #070e16 60%, #04080d 100%);
+    color: #e8e8e8;
+    font: 600 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    display: grid;
+    place-items: center;
+  }
+  .wrap {
+    position: relative;
+    width: min(96vw, 520px);
+    aspect-ratio: 9/16;
+    max-height: 96vh;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: 16px;
+    background: linear-gradient(#0e1520, #0a111a);
+    box-shadow: 0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .hud {
+    position: absolute;
+    inset: 10px 10px auto 10px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    background: var(--hud-bg);
+    padding: 8px 10px;
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    font-weight: 700;
+  }
+  .hud b { color: var(--accent); }
+  .overlay, .help {
+    position: absolute;
+    left: 50%; top: 50%; translate: -50% -50%;
+    background: var(--hud-bg);
+    padding: 14px 16px;
+    border-radius: 12px;
+    text-align: center;
+    backdrop-filter: blur(6px);
+    font-weight: 700;
+    max-width: 90%;
+  }
+  .overlay { display: none; }
+  .overlay.show { display: block; }
+  .help { opacity: .95; transition: opacity .25s ease; font-weight: 600; }
+  .help.hide { opacity: 0; }
+
+  .badge {
+    display: inline-block;
+    border: 1px solid rgba(255,255,255,.25);
+    padding: 1px 6px; border-radius: 6px;
+    margin: 0 2px; background: rgba(255,255,255,.08);
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="480" height="854"></canvas>
+
+    <div class="hud">
+      <div>Прогресс: <b><span id="progress">0</span>%</b></div>
+      <div>Попытка: <b><span id="attempts">1</span></b></div>
+      <div>Скорость: <b><span id="speed">0</span> км/ч</b></div>
+    </div>
+
+    <div id="help" class="help">
+      Прыжок: <span class="badge">Пробел</span>/<span class="badge">W</span>/<span class="badge">↑</span> или тап.<br/>
+      Держи для автопрыжка. <span class="badge">P</span> — пауза, <span class="badge">R</span> — рестарт.
+    </div>
+
+    <div id="paused" class="overlay">Пауза</div>
+    <div id="gameover" class="overlay">
+      💥 Проигрыш!<br/>
+      Прогресс: <span id="finalProgress">0</span>%<br/>
+      Нажми <span class="badge">R</span> чтобы попробовать ещё раз
+    </div>
+    <div id="win" class="overlay">
+      ⭐ Победа!<br/>
+      Пройдено: <span id="finalProgressWin">100</span>%<br/>
+      Нажми <span class="badge">R</span> чтобы сыграть ещё
+    </div>
+  </div>
+
+<script>
+(() => {
+  // Canvas & HUD
+  const W = 480, H = 854;
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const elProgress = document.getElementById('progress');
+  const elAttempts = document.getElementById('attempts');
+  const elSpeed = document.getElementById('speed');
+  const elHelp = document.getElementById('help');
+  const elPaused = document.getElementById('paused');
+  const elGameOver = document.getElementById('gameover');
+  const elWin = document.getElementById('win');
+  const elFinalProgress = document.getElementById('finalProgress');
+  const elFinalProgressWin = document.getElementById('finalProgressWin');
+
+  // World
+  const groundY = H - 120;
+  const groundH = 24;
+
+  // Player (cube)
+  const cube = {
+    x: 140, y: groundY - 42, w: 42, h: 42,
+    vy: 0, onGround: true, angle: 0
+  };
+
+  // Physics
+  const GRAV = 2600;     // гравитация (px/s^2)
+  const JUMP_V = 720;    // начальная скорость прыжка (px/s)
+  const COYOTE = 0.08;   // coyote time (сек после схода с платформы)
+  const JUMP_BUFFER = 0.18; // jump-buffer (сек после нажатия)
+  let coyoteTimer = 0;
+  let jumpBufferTimer = 0;
+  let inputHeld = false;
+
+  // Speed/scroll
+  let speed = 320;             // px/s
+  const minSpeed = 320, maxSpeed = 520, accel = 10;
+  const M_PER_PX = 0.05;       // для красивого км/ч
+  let scrollX = 0;             // мировая прокрутка (камера)
+  let distWorld = 0;           // для прогресса
+
+  // Level
+  let obstacles = []; // blocks and spikes
+  let finishX = 7000; // длина уровня в пикселях до финиша
+  let cursorX = 0;    // куда ставим следующие паттерны
+  let rngSeed = (Math.random() * 1e9) | 0;
+
+  // Game state
+  let paused = false;
+  let gameOver = false;
+  let win = false;
+  let attempts = 1;
+
+  // Effects
+  let shakeT = 0;
+  let hitFlash = 0;
+
+  // Input: keyboard
+  document.addEventListener('keydown', (e) => {
+    const c = e.code;
+    if (gameOver || win) {
+      if (c === 'KeyR' || c === 'Enter' || c === 'Space') { e.preventDefault(); restart(); }
+      return;
+    }
+    if (c === 'Space' || c === 'KeyW' || c === 'ArrowUp') { e.preventDefault(); pressJump(); }
+    if (c === 'KeyP') { e.preventDefault(); togglePause(); }
+  });
+  document.addEventListener('keyup', (e) => {
+    const c = e.code;
+    if (c === 'Space' || c === 'KeyW' || c === 'ArrowUp') releaseJump();
+  });
+
+  // Input: pointer/touch
+  canvas.addEventListener('pointerdown', () => pressJump(), {passive: true});
+  canvas.addEventListener('pointerup', () => releaseJump(), {passive: true});
+  canvas.addEventListener('touchstart', () => pressJump(), {passive: true});
+  canvas.addEventListener('touchend', () => releaseJump(), {passive: true});
+
+  function pressJump() {
+    inputHeld = true;
+    jumpBufferTimer = JUMP_BUFFER;
+    hideHelpSoon();
+  }
+  function releaseJump() {
+    inputHeld = false;
+  }
+
+  function togglePause() {
+    if (gameOver || win) return;
+    paused = !paused;
+    elPaused.classList.toggle('show', paused);
+  }
+
+  let helpTimer = null;
+  function hideHelpSoon() {
+    if (helpTimer) return;
+    helpTimer = setTimeout(() => elHelp.classList.add('hide'), 450);
+  }
+
+  // RNG (LCG)
+  function rnd() {
+    rngSeed = (1103515245 * rngSeed + 12345) & 0x7fffffff;
+    return rngSeed / 0x7fffffff;
+  }
+  function choice(arr) { return arr[Math.floor(rnd() * arr.length)] }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function lerp(a,b,t){ return a + (b - a) * t; }
+
+  // Obstacles: types
+  // block: {type:'block', x,y,w,h}
+  // spike: {type:'spike', x,y,w,h}  // треугольник вверх, основание на y
+
+  // Level generation
+  function resetLevel() {
+    scrollX = 0;
+    distWorld = 0;
+    speed = 320;
+    obstacles = [];
+    rngSeed = (Math.random() * 1e9) | 0;
+    cursorX = 520; // первые метры пустые
+    finishX = 6800 + Math.floor(rnd() * 1200); // длина уровня
+    // наполнить вперёд
+    while (cursorX < finishX - 400) {
+      placePattern();
+    }
+    // финишная платформа (чтобы красиво добежать)
+    makeBlock(finishX, 240, 36, groundY - 36);
+  }
+
+  function placePattern() {
+    // набор "безопасных" паттернов
+    const patterns = [
+      patSingleSpike,
+      patDoubleSpike,
+      patTripleSpike,
+      patBlockLow,
+      patBlockHigh,
+      patBlockThenSpike,
+      patStairs
+    ];
+    const p = choice(patterns);
+    p();
+  }
+
+  function space(d=120) { cursorX += d; }
+
+  function patSingleSpike() {
+    space(140);
+    makeSpike(cursorX, groundY, 30, 36);
+    space(150);
+  }
+  function patDoubleSpike() {
+    space(150);
+    makeSpike(cursorX, groundY, 28, 34);
+    makeSpike(cursorX + 48, groundY, 28, 34);
+    space(170);
+  }
+  function patTripleSpike() {
+    space(160);
+    const w=28,h=34,gap=38;
+    makeSpike(cursorX, groundY, w,h);
+    makeSpike(cursorX + gap, groundY, w,h);
+    makeSpike(cursorX + gap*2, groundY, w,h);
+    space(200);
+  }
+  function patBlockLow() {
+    space(140);
+    const bw = 160, bh = 48;
+    makeBlock(cursorX, bw, bh, groundY - bh);
+    space(bw + 140);
+  }
+  function patBlockHigh() {
+    space(160);
+    const bw = 180, bh = 70;
+    makeBlock(cursorX, bw, bh, groundY - bh);
+    // шип на конце платформы (прыжок с кромки)
+    makeSpike(cursorX + bw - 44, groundY - bh, 26, 30);
+    space(bw + 200);
+  }
+  function patBlockThenSpike() {
+    space(140);
+    const bw = 140, bh = 52;
+    makeBlock(cursorX, bw, bh, groundY - bh);
+    // после блока шип с небольшим отступом
+    makeSpike(cursorX + bw + 36, groundY, 28, 34);
+    space(bw + 200);
+  }
+  function patStairs() {
+    space(140);
+    const bw = 120, step = 36;
+    makeBlock(cursorX, bw, step, groundY - step);
+    makeBlock(cursorX + bw + 20, bw, step * 2, groundY - step*2);
+    makeSpike(cursorX + bw*2 + 40, groundY, 28, 34);
+    space(bw*2 + 220);
+  }
+
+  function makeBlock(x, w, h, yTop) {
+    obstacles.push({ type:'block', x, y: yTop, w, h });
+  }
+  function makeSpike(xLeft, baseY, w=28, h=34) {
+    obstacles.push({ type:'spike', x: xLeft, y: baseY, w, h });
+  }
+
+  // Physics helpers
+  function doJump() {
+    cube.vy = -JUMP_V;
+    cube.onGround = false;
+    coyoteTimer = 0;
+    jumpBufferTimer = 0;
+  }
+
+  // Loop
+  let prev = performance.now();
+  resetLevel();
+  requestAnimationFrame(loop);
+
+  function loop(t) {
+    const dt = Math.min(0.033, (t - prev) / 1000);
+    prev = t;
+
+    if (!paused && !gameOver && !win) update(dt);
+    render();
+
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt) {
+    // Скорость — небольшой рост к максимуму
+    speed = clamp(speed + accel * dt, minSpeed, maxSpeed);
+    scrollX += speed * dt;
+    distWorld += speed * dt;
+
+    // Прогресс и скорость в HUD
+    const progress = clamp(Math.floor((scrollX / finishX) * 100), 0, 100);
+    elProgress.textContent = progress;
+    elSpeed.textContent = Math.round(speed * (M_PER_PX * 3.6));
+
+    // Буфер прыжка и койот
+    if (jumpBufferTimer > 0) jumpBufferTimer -= dt;
+    if (!cube.onGround && coyoteTimer > 0) coyoteTimer -= dt;
+
+    // Автопрыжок при удержании
+    if ((cube.onGround || coyoteTimer > 0) && (inputHeld || jumpBufferTimer > 0)) {
+      doJump();
+    }
+
+    // Гравитация и вертикальное движение
+    const prevY = cube.y;
+    cube.vy += GRAV * dt;
+    cube.y += cube.vy * dt;
+    cube.onGround = false;
+
+    // Стол с землей (только сверху)
+    if (cube.y + cube.h >= groundY) {
+      // если падали сверху — приземлились
+      if (prevY + cube.h <= groundY) {
+        cube.y = groundY - cube.h;
+        cube.vy = 0;
+        cube.onGround = true;
+        coyoteTimer = COYOTE;
+      } else {
+        // снизу/сбоку земли невозможно — на всякий
+        cube.y = groundY - cube.h;
+        cube.vy = 0;
+        cube.onGround = true;
+        coyoteTimer = COYOTE;
+      }
+    }
+
+    // Коллизии с препятствиями
+    // Смотрим только близкие по экрану
+    const px = cube.x, py = cube.y, pw = cube.w, ph = cube.h;
+
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      const sx = o.x - scrollX; // экранная позиция
+      // очистка вышедших слева
+      if (sx + (o.w || 30) < -200) { obstacles.splice(i, 1); continue; }
+
+      if (o.type === 'block') {
+        const bx = sx, by = o.y, bw = o.w, bh = o.h;
+        if (rectOverlap(px, py, pw, ph, bx, by, bw, bh)) {
+          // Проверяем приземление сверху: в прошлом кадре были над верхом, и падаем
+          const prevBottom = prevY + ph;
+          const top = by;
+          if (prevBottom <= top + 0.5 && cube.vy >= 0) {
+            // посадить на платформу
+            cube.y = top - ph;
+            cube.vy = 0;
+            cube.onGround = true;
+            coyoteTimer = COYOTE;
+          } else {
+            // удар в бок/снизу — смерть
+            return onHit(progress);
+          }
+        }
+      } else if (o.type === 'spike') {
+        const tri = { x: sx, y: o.y, w: o.w, h: o.h };
+        // Проверим 3 точки по низу куба
+        const bl = { x: px + 4, y: py + ph - 2 };
+        const br = { x: px + pw - 4, y: py + ph - 2 };
+        const bc = { x: px + pw/2, y: py + ph - 2 };
+        if (pointInSpike(bl, tri) || pointInSpike(br, tri) || pointInSpike(bc, tri)) {
+          return onHit(progress);
+        }
+      }
+    }
+
+    // Поворот куба (в воздухе)
+    if (!cube.onGround) {
+      cube.angle += 6.0 * dt; // радиан/с ~ 343°
+      if (cube.angle > Math.PI*2) cube.angle -= Math.PI*2;
+    } else {
+      // мягко выравниваем по 90°
+      const snap = Math.round(cube.angle / (Math.PI/2)) * (Math.PI/2);
+      cube.angle = lerp(cube.angle, snap, Math.min(1, dt * 12));
+    }
+
+    // Победа (если прошли финиш)
+    if (scrollX + cube.x + cube.w >= finishX) {
+      onWin();
+    }
+  }
+
+  function rectOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+    return !(ax + aw <= bx || ax >= bx + bw || ay + ah <= by || ay >= by + bh);
+  }
+
+  // точка внутри треугольника-шипа (вверх)
+  function pointInSpike(p, tri) {
+    const x0 = tri.x, y0 = tri.y, w = tri.w, h = tri.h;
+    if (p.x < x0 || p.x > x0 + w || p.y < y0 - h || p.y > y0) return false;
+    const ax = x0 + w/2, ay = y0 - h;
+    const mL = -2*h / w; // наклон левой стороны
+    const mR =  2*h / w; // наклон правой стороны
+    const yLeft  = ay + mL * (p.x - ax);
+    const yRight = ay + mR * (p.x - ax);
+    return p.y >= yLeft && p.y >= yRight && p.y <= y0;
+  }
+
+  function onHit(progress) {
+    gameOver = true;
+    shakeT = 0.5;
+    hitFlash = 0.35;
+    elFinalProgress.textContent = String(progress);
+    elGameOver.classList.add('show');
+    elPaused.classList.remove('show');
+  }
+
+  function onWin() {
+    win = true;
+    elFinalProgressWin.textContent = '100';
+    elWin.classList.add('show');
+    elPaused.classList.remove('show');
+  }
+
+  function restart() {
+    attempts += 1;
+    elAttempts.textContent = attempts;
+    // reset player
+    cube.x = 140;
+    cube.y = groundY - cube.h;
+    cube.vy = 0;
+    cube.onGround = true;
+    cube.angle = 0;
+    // reset states
+    paused = false;
+    gameOver = false;
+    win = false;
+    elGameOver.classList.remove('show');
+    elWin.classList.remove('show');
+    elPaused.classList.remove('show');
+    // level
+    resetLevel();
+  }
+
+  // Render
+  function render() {
+    // camera shake
+    const shakeAmt = (shakeT > 0) ? (6 * Math.pow(shakeT, 0.6)) : 0;
+    const sx = (Math.random() * 2 - 1) * shakeAmt;
+    const sy = (Math.random() * 2 - 1) * shakeAmt;
+
+    if (shakeT > 0) shakeT -= 1/60;
+    if (hitFlash > 0) hitFlash -= 1/60;
+
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    ctx.translate(sx, sy);
+
+    drawBackground();
+    drawGround();
+    drawObstacles();
+    drawPlayer();
+
+    if (hitFlash > 0) {
+      const a = Math.max(0, Math.min(0.35, hitFlash * 1.5));
+      ctx.fillStyle = `rgba(255,0,0,${a})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    ctx.restore();
+  }
+
+  function drawBackground() {
+    // Простые параллакс-линии
+    ctx.save();
+    const stripes = 8;
+    ctx.globalAlpha = 0.12;
+    ctx.strokeStyle = '#9ad1ff';
+    for (let i = 0; i <= stripes; i++) {
+      const y = (i / stripes) * H + ((scrollX * 0.2) % (H/stripes));
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y + 30);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawGround() {
+    // Подложка
+    ctx.fillStyle = '#1d2733';
+    ctx.fillRect(0, groundY, W, groundH);
+    // Клетка
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    const grid = 30;
+    const off = -((scrollX * 0.6) % grid);
+    for (let x = off; x < W; x += grid) {
+      ctx.beginPath();
+      ctx.moveTo(x, groundY); ctx.lineTo(x, H); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawObstacles() {
+    for (const o of obstacles) {
+      const x = o.x - scrollX;
+      if (x > W + 200) continue; // далеко справа
+      if (o.type === 'block') {
+        ctx.fillStyle = '#2e3b47';
+        roundRect(ctx, x, o.y, o.w, o.h, 6); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        roundRect(ctx, x + 6, o.y + 6, o.w - 12, 10, 4); ctx.fill();
+      } else if (o.type === 'spike') {
+        drawSpike(x, o.y, o.w, o.h);
+      }
+    }
+  }
+
+  function drawSpike(x, baseY, w, h) {
+    // Тень
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(x + 2, baseY + 6);
+    ctx.lineTo(x + w - 2, baseY + 6);
+    ctx.lineTo(x + w/2, baseY - h + 10);
+    ctx.closePath(); ctx.fill();
+
+    // Треугольник
+    const grad = ctx.createLinearGradient(0, baseY - h, 0, baseY);
+    grad.addColorStop(0, '#8bd0ff');
+    grad.addColorStop(1, '#4ea6e0');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(x, baseY);
+    ctx.lineTo(x + w, baseY);
+    ctx.lineTo(x + w/2, baseY - h);
+    ctx.closePath();
+    ctx.fill();
+
+    // Блик
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(x + 4, baseY - 2);
+    ctx.lineTo(x + w/2, baseY - h + 4);
+    ctx.lineTo(x + w - 4, baseY - 2);
+    ctx.stroke();
+  }
+
+  function drawPlayer() {
+    // Тень
+    const shW = cube.w * (0.9 - Math.min(0.6, Math.max(0, -cube.vy)/900)*0.5);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    roundRect(ctx, cube.x + (cube.w - shW)/2, groundY + 12, shW, 10, 6); ctx.fill();
+
+    // Куб
+    const cx = cube.x + cube.w/2;
+    const cy = cube.y + cube.h/2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(cube.angle);
+    // Тело
+    const bodyGrad = ctx.createLinearGradient(-cube.w/2, -cube.h/2, cube.w/2, cube.h/2);
+    bodyGrad.addColorStop(0, '#ff8a65');
+    bodyGrad.addColorStop(1, '#ff5252');
+    ctx.fillStyle = bodyGrad;
+    roundRect(ctx, -cube.w/2, -cube.h/2, cube.w, cube.h, 6); ctx.fill();
+    // Глаз :)
+    ctx.fillStyle = '#111';
+    roundRect(ctx, -cube.w*0.15, -cube.h*0.15, cube.w*0.3, cube.h*0.3, 3); ctx.fill();
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+})();
+</script>
+</body>
+</html> 
