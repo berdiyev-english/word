@@ -627,7 +627,7 @@ class EnglishWordsApp {
         </div>
 
         <div class="flashcard">
-          <img src="${imgUrl}" data-word="${this.safeAttr(currentWord.word)}" alt="image for ${currentWord.word}" class="flashcard-image" onerror="app.handleMediaImageError(event)"/>
+          <img src="${imgUrl}" data-word="${this.safeAttr(currentWord.word)}" alt="imageword" class="flashcard-image" onerror="app.handleMediaImageError(event)"/>
           <div class="flashcard-body">
             <div class="flashcard-title">${prompt}</div>
             <div class="flashcard-subtitle">${currentWord.level} • Точность: ${accuracy}%</div>
