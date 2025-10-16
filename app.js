@@ -1,50 +1,9 @@
 class EnglishWordsApp {
   constructor() {
-    this.currentSection = 'about';
-    this.currentLevel = null;
-    this.currentCategory = null;
-
-    this.learningWords = [];
-    this.customWords = [];
-
-    this.audioPlayer = document.getElementById('audioPlayer');
-
-    this.studyMode = 'flashcards';
-    this.practiceMode = 'scheduled';
-
-    this.currentReviewIndex = 0;
-    this.currentReviewWords = [];
-    this.sessionQueue = [];
-
-    this.dbAvailable = false;
-
-    // Games
-    this.raceGame = null;
-    this.dashGame = null;
-Games this.raceGame = null; this.dashGame = null; this.game2048 = null;
-    try {
-      this.init();
-    } catch (err) {
-      console.error('App init error:', err);
-      alert('Ошибка инициализации. Проверьте консоль браузера.');
-    }
   }
 
   /* INIT */
   init() {
-    this.detectDatabase();
-    this.loadData();
-    this.migrateExistingWords();
-    this.setupEventListeners();
-    this.setupTheme();
-    this.updateUI();
-
-    if (!this.dbAvailable) {
-      console.warn('oxford_words_data.js не найден или пуст.');
-      this.showNotification('Не найден oxford_words_data.js — проверьте файл и путь', 'warning');
-    }
-
-    if (this.currentSection === 'learning') this.renderLearningWords();
   }
 
   detectDatabase() {
@@ -215,7 +174,8 @@ Games this.raceGame = null; this.dashGame = null; this.game2048 = null;
     if (dashStartBtn) dashStartBtn.addEventListener('click', () => this.openDashGame());
 
     const g2048StartBtn = document.getElementById('game2048StartBtn');
-    if (g2048StartBtn) g2048StartBtn.addEventListener('click', () => this.open2048Game()); //;
+    if (g2048StartBtn) g2048StartBtn.addEventListener('click', () => {
+      this.showNotification('2048 будет подключена следующим шагом', 'info');
     });
   }
 
@@ -2288,128 +2248,6 @@ Games this.raceGame = null; this.dashGame = null; this.game2048 = null;
     };
   }
 }
-open2048Game() { // Требование: минимум 4 активных слова if ((this.learningWords || []).filter(w => !w.isLearned).length < 4) { this.showNotification('Чтобы играть, добавьте минимум 4 слова в «Изучаю»', 'warning'); return; } if (this.game2048 && this.game2048.isOpen && this.game2048.isOpen()) { this.game2048.focus && this.game2048.focus(); return; }
 
-// Оверлей const overlay = document.createElement('div'); Object.assign(overlay.style, { position: 'fixed', inset: 0, zIndex: 999999, background: 'radial-gradient(1200px 800px at 50% -10%, #0a1a26 0%, #070e16 60%, #04080d 100%)', display: 'grid', placeItems: 'center', touchAction: 'none', padding: '18px' });
-
-// Верхняя панель с крестиком const topBar = document.createElement('div'); Object.assign(topBar.style, { position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)', width: 'min(96vw, 520px)', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', zIndex: 1000000, pointerEvents: 'auto' }); const closeBtn = document.createElement('button'); closeBtn.innerHTML = '<i class="fas fa-times"></i>'; Object.assign(closeBtn.style, { width: '42px', height: '42px', borderRadius: '10px', border: '1px solid rgba(255,255,255,.25)', color: '#fff', background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }); topBar.appendChild(closeBtn);
-
-// Обёртка const wrap = document.createElement('div'); Object.assign(wrap.style, { width: 'min(96vw, 520px)' });
-
-// Хедер (бренд + очки) const top = document.createElement('div'); Object.assign(top.style, { display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', flexWrap:'wrap', marginBottom:'12px' }); top.innerHTML =
-<div style="font-size:20px;font-weight:900;letter-spacing:.02em;">2048</div> <div style="display:flex;gap:8px;"> <div style="background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.15);padding:6px 10px;border-radius:10px;min-width:90px;text-align:center;font-weight:800;">Score<b id="g2048Score" style="display:block;color:#ffd54f;font-size:18px;margin-top:2px;">0</b></div> <div style="background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.15);padding:6px 10px;border-radius:10px;min-width:90px;text-align:center;font-weight:800;">Best<b id="g2048Best" style="display:block;color:#ffd54f;font-size:18px;margin-top:2px;">0</b></div> </div>
-;
-
-// Кнопки и размер const controls = document.createElement('div'); Object.assign(controls.style, { display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'10px' }); controls.innerHTML =
-<button id="g2048New" style="background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;">Новая игра</button> <button id="g2048Undo" style="background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;">Отменить</button> <label style="display:flex;align-items:center;gap:6px;color:#fff;">Size: <select id="g2048Size" style="background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;"> <option>3</option><option selected>4</option><option>5</option><option>6</option> </select> </label>
-;
-
-const hint = document.createElement('div'); Object.assign(hint.style, { opacity:.75, margin:'6px 0 10px', color:'#e8e8e8', fontWeight:'600' }); hint.textContent = 'Управление: ← ↑ → ↓ или WASD. На телефоне — свайпы. Победа на 2048 (можно продолжить).';
-
-// Доска const board = document.createElement('div'); board.id = 'g2048Board'; Object.assign(board.style, { position:'relative', width:'100%', aspectRatio:'1/1', background:'#bbada0', borderRadius:'16px', padding:'12px', userSelect:'none', touchAction:'none', boxShadow:'0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06)' });
-
-const grid = document.createElement('div'); grid.id = 'g2048Grid'; Object.assign(grid.style, { position:'absolute', inset:'12px', display:'grid', gap:'12px', gridTemplateColumns:'repeat(4,1fr)' }); const tilesEl = document.createElement('div'); tilesEl.id = 'g2048Tiles'; Object.assign(tilesEl.style, { position:'absolute', inset:'12px', pointerEvents:'none' });
-
-// Оверлеи Win/Lose const winOv = document.createElement('div'); winOv.id = 'g2048Win'; Object.assign(winOv.style, { position:'absolute', inset:0, display:'none', placeItems:'center', background:'rgba(0,0,0,.45)', borderRadius:'16px', backdropFilter:'blur(4px)' }); winOv.innerHTML =
-<div style="background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.15);padding:14px 16px;border-radius:12px;text-align:center;font-weight:800;min-width:60%;"> <div style="font-size:20px;margin-bottom:6px;">🎉 2048!</div> <div>Хочешь продолжить игру?</div> <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"> <button id="g2048Continue" style="background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;">Продолжить игру</button> <button id="g2048NewFromWin" style="background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;">Новая игра</button> </div> </div>
-;
-
-const loseOv = document.createElement('div'); loseOv.id = 'g2048Lose'; Object.assign(loseOv.style, { position:'absolute', inset:0, display:'none', placeItems:'center', background:'rgba(0,0,0,.45)', borderRadius:'16px', backdropFilter:'blur(4px)' }); loseOv.innerHTML =
-<div style="background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.15);padding:14px 16px;border-radius:12px;text-align:center;font-weight:800;min-width:60%;"> <div style="font-size:20px;margin-bottom:6px;">💥 Игра окончена</div> <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;"> <button id="g2048Restart" style="background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;">Продолжить игру</button> </div> </div>
-;
-
-// Модалка квиза (3 верных) const quizModal = document.createElement('div'); Object.assign(quizModal.style, { position:'absolute', inset:0, display:'none', placeItems:'center', background:'rgba(0,0,0,.45)', borderRadius:'16px', backdropFilter:'blur(4px)', zIndex:5 }); const quizCard = document.createElement('div'); Object.assign(quizCard.style, { background:'rgba(0,0,0,.55)', border:'1px solid rgba(255,255,255,.15)', padding:'14px 16px', borderRadius:'12px', textAlign:'center', fontWeight:'800', minWidth:'60%' }); const quizContent = document.createElement('div'); quizCard.appendChild(quizContent); quizModal.appendChild(quizCard);
-
-// Сборка DOM board.appendChild(grid); board.appendChild(tilesEl); board.appendChild(winOv); board.appendChild(loseOv); board.appendChild(quizModal);
-
-wrap.appendChild(top); wrap.appendChild(controls); wrap.appendChild(hint); wrap.appendChild(board);
-
-overlay.appendChild(topBar); overlay.appendChild(wrap); document.body.appendChild(overlay);
-
-// ===== 2048 ЛОГИКА ===== const scoreEl = top.querySelector('#g2048Score'); const bestEl = top.querySelector('#g2048Best'); const sizeSel = controls.querySelector('#g2048Size'); const btnNew = controls.querySelector('#g2048New'); const btnUndo = controls.querySelector('#g2048Undo'); const btnContinue = winOv.querySelector('#g2048Continue'); const btnNewFromWin = winOv.querySelector('#g2048NewFromWin'); const btnRestart = loseOv.querySelector('#g2048Restart');
-
-let size = parseInt(localStorage.getItem('2048-size') || '4', 10); sizeSel.value = String(size); grid.style.gridTemplateColumns = repeat(${size}, 1fr);
-
-let tiles = []; // [{id,x,y,value, merged, scale}] let idSeq = 1; let score = 0; let best = parseInt(localStorage.getItem('2048-best') || '0', 10); bestEl.textContent = best;
-
-let keepPlaying = false; let won = false; let over = false; let undoState = null;
-
-// Метрики const GAP = 12; let cell, tilesRect; function computeMetrics() { tilesRect = tilesEl.getBoundingClientRect(); const W = tilesRect.width; cell = (W - GAP * (size - 1)) / size; } window.addEventListener('resize', () => { computeMetrics(); layoutTiles(); });
-
-// Утилиты const inBounds = (x,y) => x >= 0 && x < size && y >= 0 && y < size; function getGrid() { const g = Array.from({length:size}, () => Array(size).fill(null)); for (const t of tiles) g[t.x][t.y] = t; return g; } function emptyCells() { const g = getGrid(); const arr = []; for (let y=0;y<size;y++) for (let x=0;x<size;x++) if (!g[x][y]) arr.push({x,y}); return arr; } function randEmptyCell() { const cells = emptyCells(); if (!cells.length) return null; return cells[Math.floor(Math.random()cells.length)]; } function addRandomTile() { const spot = randEmptyCell(); if (!spot) return false; const val = Math.random() < 0.9 ? 2 : 4; const t = { id: idSeq++, x: spot.x, y: spot.y, value: val, scale: 0.1 }; tiles.push(t); spawnTileEl(t); requestAnimationFrame(() => { t.scale = 1; updateTileEl(t); }); return true; } function setupGridCells() { grid.innerHTML = ''; grid.style.gridTemplateColumns = repeat(${size}, 1fr); for (let i=0;i<sizesize;i++) { const cellEl = document.createElement('div'); Object.assign(cellEl.style, { background:'rgba(238,228,218,0.35)', borderRadius:'12px', aspectRatio:'1/1' }); grid.appendChild(cellEl); } } function resetGrid() { tiles = []; idSeq = 1; score = 0; won = false; keepPlaying = false; over = false; scoreEl.textContent = '0'; tilesEl.innerHTML = ''; winOv.style.display = 'none'; loseOv.style.display = 'none'; setupGridCells(); computeMetrics(); addRandomTile(); addRandomTile(); saveUndo(); } function updateScore(delta, reset=false) { if (reset) { score = 0; } else score += delta; scoreEl.textContent = score; if (score > best) { best = score; bestEl.textContent = best; localStorage.setItem('2048-best', String(best)); } } function tileStyle(value) { const bg = {2:'#eee4da',4:'#ede0c8',8:'#f2b179',16:'#f59563',32:'#f67c5f',64:'#f65e3b',128:'#edcf72',256:'#edcc61',512:'#edc850',1024:'#edc53f',2048:'#edc22e'}[value] || '#3c3a32'; const color = value <= 4 ? '#776e65' : '#f9f6f2'; return { bg, color }; } function posToTransform(x, y, s=1) { const tx = x * (cell + GAP); const ty = y * (cell + GAP); return translate(${tx}px, ${ty}px) scale(${s}); } function spawnTileEl(t) { const el = document.createElement('div'); el.className = 'tile'; el.dataset.id = t.id; Object.assign(el.style, { position:'absolute', width:cell+'px', height:cell+'px', display:'grid', placeItems:'center', fontWeight:'900', borderRadius:'12px', boxShadow:'inset 0 0 0 1px rgba(0,0,0,.04)' }); const { bg, color } = tileStyle(t.value); el.style.background = bg; el.style.color = color; el.style.transform = posToTransform(t.x, t.y, t.scale || 1); el.style.fontSize = (t.value < 100 ? 0.42 : t.value < 1000 ? 0.38 : t.value < 10000 ? 0.33 : 0.30) * cell + 'px'; el.textContent = t.value; tilesEl.appendChild(el); } function getTileEl(t) { return tilesEl.querySelector(.tile[data-id="${t.id}"]); } function updateTileEl(t, bump=false) { const el = getTileEl(t); if (!el) return; el.style.width = el.style.height = cell + 'px'; el.style.transform = posToTransform(t.x, t.y, t.scale || 1); el.textContent = t.value; const { bg, color } = tileStyle(t.value); el.style.background = bg; el.style.color = color; el.style.fontSize = (t.value < 100 ? 0.42 : t.value < 1000 ? 0.38 : t.value < 10000 ? 0.33 : 0.30) * cell + 'px'; } function removeTileEl(t) { const el = getTileEl(t); if (el && el.parentNode) el.parentNode.removeChild(el); } function layoutTiles() { for (const t of tiles) updateTileEl(t); }
-
-// Движение const VECTORS = { left:{x:-1,y:0}, right:{x:1,y:0}, up:{x:0,y:-1}, down:{x:0,y:1} }; function buildTraversals(vector) { const xs = [...Array(size).keys()]; const ys = [...Array(size).keys()]; if (vector.x === 1) xs.reverse(); if (vector.y === 1) ys.reverse(); return { xs, ys }; } function findFarthest(cell, vector, grid) { let prev; let x = cell.x, y = cell.y; do { prev = { x, y }; x += vector.x; y += vector.y; } while (inBounds(x, y) && !grid[x][y]); return { farthest: prev, next: { x, y } }; } function canMove() { const g = getGrid(); for (let y=0;y<size;y++) for (let x=0;x<size;x++) if (!g[x][y]) return true; for (let y=0;y<size;y++) for (let x=0;x<size;x++) { const t = g[x][y]; if (!t) continue; for (const v of Object.values(VECTORS)) { const nx = x + v.x, ny = y + v.y; if (!inBounds(nx, ny)) continue; const n = g[nx][ny]; if (n && n.value === t.value) return true; } } return false; } function move(dir) { if (over) return; const vector = VECTORS[dir]; const { xs, ys } = buildTraversals(vector); const gridM = getGrid(); let moved = false;
-
-for (const t of tiles) t.merged = false;
-
-for (const y of ys) {
-  for (const x of xs) {
-    const t = gridM[x][y]; if (!t) continue;
-    const start = { x, y };
-    const { farthest, next } = findFarthest(start, vector, gridM);
-    const nextTile = inBounds(next.x, next.y) ? gridM[next.x][next.y] : null;
-
-    if (nextTile && nextTile.value === t.value && !nextTile.merged) {
-      // merge
-      gridM[t.x][t.y] = null;
-      t.x = next.x; t.y = next.y;
-      t.value *= 2; t.merged = true;
-      gridM[next.x][next.y] = t;
-
-      const idx = tiles.indexOf(nextTile);
-      if (idx >= 0) { tiles.splice(idx, 1); removeTileEl(nextTile); }
-
-      updateTileEl(t, true);
-      updateScore(t.value);
-      moved = true;
-
-      if (t.value === 2048 && !keepPlaying) {
-        won = true;
-      }
-    } else {
-      if (farthest.x !== t.x || farthest.y !== t.y) {
-        gridM[t.x][t.y] = null;
-        t.x = farthest.x; t.y = farthest.y;
-        gridM[t.x][t.y] = t;
-        updateTileEl(t);
-        moved = true;
-      }
-    }
-  }
-}
-
-if (moved) {
-  setTimeout(() => {
-    addRandomTile();
-    saveUndo();
-    if (!canMove()) {
-      over = true;
-      loseOv.style.display = 'grid';
-    } else if (won && !keepPlaying) {
-      winOv.style.display = 'grid';
-    }
-  }, 100);
-}
-}
-
-// Undo function saveUndo() { undoState = { tiles: tiles.map(t => ({...t})), score, won, keepPlaying, over }; } function doUndo() { if (!undoState) return; tiles = undoState.tiles.map(t => ({...t})); score = undoState.score; scoreEl.textContent = score; won = undoState.won; keepPlaying = undoState.keepPlaying; over = undoState.over; tilesEl.innerHTML = ''; for (const t of tiles) spawnTileEl(t); layoutTiles(); winOv.style.display = (won && !keepPlaying) ? 'grid' : 'none'; loseOv.style.display = over ? 'grid' : 'none'; }
-
-// Ввод: клавиатура const keyDown = (e) => { const c = e.code; if (winOv.style.display === 'grid' || loseOv.style.display === 'grid') return; if (c === 'ArrowLeft' || c === 'KeyA') { e.preventDefault(); move('left'); } if (c === 'ArrowRight'|| c === 'KeyD') { e.preventDefault(); move('right'); } if (c === 'ArrowUp' || c === 'KeyW') { e.preventDefault(); move('up'); } if (c === 'ArrowDown' || c === 'KeyS') { e.preventDefault(); move('down'); } if (c === 'KeyU') { e.preventDefault(); doUndo(); } if (c === 'KeyN') { e.preventDefault(); startNewGame(); } }; document.addEventListener('keydown', keyDown);
-
-// Свайпы let startX=0, startY=0, startT=0; board.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; startX=t.clientX; startY=t.clientY; startT=performance.now(); }, {passive:true}); board.addEventListener('touchend', (e) => { const t = e.changedTouches[0]; const dx = t.clientX - startX; const dy = t.clientY - startY; const dt = performance.now() - startT; const thr = 24; if (dt > 800) return; if (Math.abs(dx) < thr && Math.abs(dy) < thr) return; if (winOv.style.display === 'grid' || loseOv.style.display === 'grid') return; if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 'right' : 'left'); else move(dy > 0 ? 'down' : 'up'); }, {passive:true});
-
-// Кнопки btnNew.addEventListener('click', () => startNewGame()); btnUndo.addEventListener('click', () => doUndo()); sizeSel.addEventListener('change', () => { size = parseInt(sizeSel.value, 10); localStorage.setItem('2048-size', String(size)); grid.style.gridTemplateColumns = repeat(${size}, 1fr); startNewGame(); }); btnContinue.addEventListener('click', () => showGate(() => { keepPlaying = true; winOv.style.display = 'none'; })); btnNewFromWin.addEventListener('click', () => showGate(() => startNewGame())); btnRestart.addEventListener('click', () => showGate(() => startNewGame()));
-
-function startNewGame() { winOv.style.display = 'none'; loseOv.style.display = 'none'; keepPlaying = false; won = false; over = false; resetGrid(); }
-
-// Гейт: 3 верных ответа (на старт и продолжения) const appRef = this; function showGate(onSuccess) { quizModal.style.display = 'grid'; let needed = 3, count = 0; renderCard(); function renderCard() { const pool = (appRef.learningWords || []).filter(w => !w.isLearned); if (!pool.length) { quizContent.innerHTML = <div style="color:#e8e8e8;">Недостаточно слов для игры</div>; return; } const word = pool[Math.floor(Math.random()*pool.length)]; const direction = Math.random() < 0.5 ? 'EN_RU' : 'RU_EN'; const questionText = direction === 'EN_RU' ? word.word : word.translation; const correct = direction === 'EN_RU' ? word.translation : word.word; const options = appRef.buildQuizOptions(word, direction); const shuffled = appRef.shuffle(options); quizContent.innerHTML =
-<div style="font-weight:700;margin-bottom:6px;color:#e8e8e8;">Ответьте правильно на 3 слова, чтобы продолжить</div> <div style="font-size:12px;color:#cbd5e1;margin-bottom:10px;">Правильных ответов: ${count}/${needed}</div> <div> <div style="font-size:20px;font-weight:800;margin-bottom:6px;color:#e8e8e8;">${questionText}</div> <div style="color:#cbd5e1;margin-bottom:10px;">Выберите правильный вариант</div> ${shuffled.map(opt =>
-<div class="quiz-option" data-v="${appRef.safeAttr(opt)}" style="cursor:pointer;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);font-weight:800;color:#fff;margin-top:8px;">${opt}</div>).join('')} </div>; quizContent.querySelectorAll('.quiz-option').forEach(o => o.addEventListener('click', () => { const chosen = o.getAttribute('data-v'); const ok = chosen === correct; o.style.background = ok ? '#16a34a' : '#b91c1c'; setTimeout(() => { if (ok) count++; if (count >= needed) { quizModal.style.display = 'none'; onSuccess && onSuccess(); } else { renderCard(); } }, 450); })); } }
-
-// Стартовый гейт showGate(() => startNewGame());
-
-// Закрытие closeBtn.onclick = () => { document.removeEventListener('keydown', keyDown); document.body.removeChild(overlay); };
-
-// Экспорт мини‑API this.game2048 = { isOpen: () => document.body.contains(overlay), focus: () => {} }; }
 /* Init */
 document.addEventListener('DOMContentLoaded', () => { window.app = new EnglishWordsApp(); });
