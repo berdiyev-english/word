@@ -426,3 +426,4 @@ body {
 /* Categories header small gap fix */ #categoriesGrid .level-badge { margin-bottom: 8px; }
 
 /* Новые правила — добавьте в конец файла / #raceQuizModal.hidden { display: none !important; pointer-events: none !important; } .app-container { position: relative; } / гарантируем корректный stacking context */
+*/ #raceQuizModal.hidden { display: none !important; pointer-events: none !important; } .app-container { position: relative; }
