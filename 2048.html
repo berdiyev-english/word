@@ -3,14 +3,19 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-<title>2048 — Fixed</title>
+<title>2048 — Mobile Perf</title>
 <style>
   :root {
     --gap: 12px;
     --radius: 12px;
     --board-bg: #bbada0;
     --cell-bg: rgba(238, 228, 218, 0.35);
-    --page-bg: radial-gradient(1200px 800px at 50% -10%, #0a1a26 0%, #070e16 60%, #04080d 100%);
+    --page-bg: #0f1217;
+    --anim: 90ms;
+    --ease: cubic-bezier(.2,.8,.2,1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root { --anim: 0ms; }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -21,7 +26,7 @@
     font: 600 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial;
     display: grid;
     place-items: center;
-    padding: 18px;
+    padding: 16px;
   }
   .wrap { width: min(96vw, 520px); }
   .topbar {
@@ -31,8 +36,8 @@
   .brand { font-size: 20px; font-weight: 900; letter-spacing: .02em; }
   .scores { display: flex; gap: 8px; }
   .badge {
-    background: rgba(0,0,0,.35);
-    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
     padding: 6px 10px;
     border-radius: 10px;
     min-width: 90px;
@@ -45,10 +50,10 @@
   }
   button, select {
     background: rgba(255,255,255,.08);
-    color: #fff; border: 1px solid rgba(255,255,255,.15);
+    color: #fff; border: 1px solid rgba(255,255,255,.12);
     border-radius: 10px; padding: 8px 12px;
     font-weight: 800; cursor: pointer;
-    backdrop-filter: blur(6px);
+    -webkit-tap-highlight-color: transparent;
   }
   button:hover { background: rgba(255,255,255,.12); }
   button:active { transform: translateY(1px); }
@@ -63,7 +68,7 @@
     padding: var(--gap);
     user-select: none;
     touch-action: none;
-    box-shadow: 0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06);
+    contain: content; /* изоляция перерисовок */
   }
   .grid, .tiles { position: absolute; inset: var(--gap); }
   .grid {
@@ -77,31 +82,37 @@
     background: var(--cell-bg);
     border-radius: var(--radius);
   }
-  .tiles { pointer-events: none; }
+  .tiles {
+    pointer-events: none;
+    will-change: transform;
+  }
 
   .tile {
     position: absolute;
     border-radius: var(--radius);
     display: grid; place-items: center;
     font-weight: 900;
-    transition: transform 120ms ease-in;
+    /* только GPU-композитинг */
+    transform: translate3d(var(--tx,0), var(--ty,0), 0) scale(var(--s,1));
+    transition: transform var(--anim) var(--ease);
     will-change: transform;
-    box-shadow: inset 0 0 0 1px rgba(0,0,0,.04);
-    transform: translate(var(--tx, 0), var(--ty, 0)) scale(var(--s,1));
+    backface-visibility: hidden;
+    contain: layout paint style;
   }
-  .tile.bump { animation: bump 120ms ease-out; }
+  .tile.bump {
+    animation: bump var(--anim) ease-out;
+  }
   @keyframes bump {
-    0% { transform: translate(var(--tx), var(--ty)) scale(1); }
-    50% { transform: translate(var(--tx), var(--ty)) scale(1.12); }
-    100% { transform: translate(var(--tx), var(--ty)) scale(1); }
+    0%   { transform: translate3d(var(--tx), var(--ty), 0) scale(1); }
+    50%  { transform: translate3d(var(--tx), var(--ty), 0) scale(1.11); }
+    100% { transform: translate3d(var(--tx), var(--ty), 0) scale(1); }
   }
 
   .overlay {
     position: absolute; inset: 0;
     display: none; place-items: center;
-    background: rgba(0,0,0,.45);
+    background: rgba(0,0,0,.35);
     border-radius: calc(var(--radius) + 4px);
-    backdrop-filter: blur(4px);
   }
   .overlay.show { display: grid; }
   .panel {
@@ -190,7 +201,7 @@
   sizeSel.value = String(size);
   boardEl.style.setProperty('--size', size);
 
-  let tiles = [];
+  let tiles = []; // {id,x,y,value, merged, scale}
   let idSeq = 1;
   let score = 0;
   let best = parseInt(localStorage.getItem('2048-best') || '0', 10);
@@ -199,203 +210,177 @@
   let keepPlaying = false;
   let won = false;
   let over = false;
+  let moveLock = false; // блок входа на время анимации
 
   let undoState = null;
 
   // Metrics
   const GAP = 12;
-  let cell = 0, offX = 0, offY = 0, tilesRect;
-
-  function computeMetrics() {
-    tilesRect = tilesEl.getBoundingClientRect();
-    const W = Math.max(tilesRect.width, 0);
-    cell = (W - GAP * (size - 1)) / size;
-    if (!isFinite(cell) || cell <= 0) {
-      // fallback по ширине самого board
-      const BW = Math.max(boardEl.clientWidth - GAP*2, 0);
-      cell = (BW - GAP * (size - 1)) / size;
-    }
-    offX = 0; offY = 0;
+  let cell = 0;
+  function computeCell() {
+    const inner = tilesEl.getBoundingClientRect().width;
+    if (inner > 0) cell = (inner - GAP * (size - 1)) / size;
+    else cell = (boardEl.clientWidth - GAP*2 - GAP*(size-1)) / size;
+    if (!Number.isFinite(cell) || cell <= 0) cell = 64; // фолбек
   }
-
-  function ensureLayout(cb) {
-    // Ждем, пока контейнер получит ненулевую ширину
-    let tries = 0;
-    const maxTries = 60; // ~1 сек
-    const tick = () => {
-      computeMetrics();
-      if (cell > 0 || tries >= maxTries) cb();
-      else { tries++; requestAnimationFrame(tick); }
-    };
-    requestAnimationFrame(tick);
-  }
-
-  window.addEventListener('resize', () => { computeMetrics(); layoutTiles(); });
+  window.addEventListener('resize', () => { computeCell(); layoutTiles(); });
 
   // Utils
-  const inBounds = (x,y) => x >= 0 && x < size && y >= 0 && y < size;
+  const inBounds = (x,y) => x>=0 && x<size && y>=0 && y<size;
+  const VECTORS = { left:{x:-1,y:0}, right:{x:1,y:0}, up:{x:0,y:-1}, down:{x:0,y:1} };
+  const valueStyle = (v) => {
+    const bg = {
+      2:'#eee4da', 4:'#ede0c8', 8:'#f2b179', 16:'#f59563', 32:'#f67c5f', 64:'#f65e3b',
+      128:'#edcf72', 256:'#edcc61', 512:'#edc850', 1024:'#edc53f', 2048:'#edc22e'
+    }[v] || '#3c3a32';
+    const color = v <= 4 ? '#776e65' : '#f9f6f2';
+    return { bg, color };
+  };
+  const fontSizeK = (v) => v < 100 ? .42 : v < 1000 ? .38 : v < 10000 ? .33 : .30;
 
+  // Grid helpers
+  function setupGridCells() {
+    gridEl.innerHTML = '';
+    for (let i=0;i<size*size;i++) {
+      const cellEl = document.createElement('div');
+      cellEl.className = 'cell';
+      gridEl.appendChild(cellEl);
+    }
+  }
   function getGrid() {
     const g = Array.from({length:size}, () => Array(size).fill(null));
     for (const t of tiles) g[t.x][t.y] = t;
     return g;
   }
   function emptyCells() {
-    const g = getGrid(), arr = [];
+    const g = getGrid(); const arr = [];
     for (let y=0;y<size;y++) for (let x=0;x<size;x++) if (!g[x][y]) arr.push({x,y});
     return arr;
   }
-  function randEmptyCell() {
-    const cells = emptyCells();
-    if (!cells.length) return null;
-    return cells[Math.floor(Math.random() * cells.length)];
-  }
 
-  // Rendering helpers
-  function setupGridCells() {
-    gridEl.innerHTML = '';
-    for (let i=0;i<size*size;i++) {
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      gridEl.appendChild(cell);
-    }
-  }
-
-  function posToTranslate(x, y, s=1) {
-    const tx = offX + x * (cell + GAP);
-    const ty = offY + y * (cell + GAP);
-    return { tx, ty, s };
-  }
-
-  function tileStyle(value) {
-    const bg = {
-      2:'#eee4da', 4:'#ede0c8', 8:'#f2b179', 16:'#f59563', 32:'#f67c5f', 64:'#f65e3b',
-      128:'#edcf72', 256:'#edcc61', 512:'#edc850', 1024:'#edc53f', 2048:'#edc22e'
-    }[value] || '#3c3a32';
-    const color = value <= 4 ? '#776e65' : '#f9f6f2';
-    return { bg, color };
-  }
-  function valueFontSize(v) {
-    if (v < 100) return 0.42;
-    if (v < 1000) return 0.38;
-    if (v < 10000) return 0.33;
-    return 0.30;
-  }
-
-  function spawnTileEl(t) {
+  // Tile DOM
+  function createTileEl(t) {
     const el = document.createElement('div');
     el.className = 'tile';
     el.dataset.id = t.id;
-    const { bg, color } = tileStyle(t.value);
-    el.style.background = bg;
-    el.style.color = color;
-    el.textContent = t.value;
     tilesEl.appendChild(el);
-    updateTileEl(t);
+    styleTile(t, true);
   }
-  function getTileEl(t) { return tilesEl.querySelector(`.tile[data-id="${t.id}"]`); }
-
-  function updateTileEl(t, bump=false) {
-    const el = getTileEl(t);
-    if (!el) return;
+  function qTileEl(t) { return tilesEl.querySelector(`.tile[data-id="${t.id}"]`); }
+  function styleTile(t, spawn=false, bump=false) {
+    const el = qTileEl(t); if (!el) return;
     el.style.width = el.style.height = cell + 'px';
-    const { tx, ty } = posToTranslate(t.x, t.y, t.scale || 1);
+    const tx = t.x * (cell + GAP);
+    const ty = t.y * (cell + GAP);
     el.style.setProperty('--tx', tx+'px');
     el.style.setProperty('--ty', ty+'px');
-    el.style.setProperty('--s', (t.scale || 1));
-    // text / colors
-    const { bg, color } = tileStyle(t.value);
-    el.style.background = bg;
-    el.style.color = color;
-    el.style.fontSize = (valueFontSize(t.value) * cell) + 'px';
-    el.textContent = t.value;
+    el.style.setProperty('--s', spawn ? (t.scale ?? 1) : 1);
+
+    if (t._needsText) {
+      el.textContent = t.value;
+      const { bg, color } = valueStyle(t.value);
+      el.style.background = bg;
+      el.style.color = color;
+      el.style.fontSize = (fontSizeK(t.value) * cell) + 'px';
+      t._needsText = false;
+    }
     if (bump) {
-      el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+      // Без reflow: сбрасываем анимацию через inline-style
+      el.style.animation = 'none';
+      requestAnimationFrame(() => {
+        el.style.animation = '';
+        el.classList.add('bump');
+        // убрать класс после завершения, чтобы не копилось
+        const clear = () => { el.classList.remove('bump'); el.removeEventListener('animationend', clear); };
+        el.addEventListener('animationend', clear);
+      });
     }
   }
-  function removeTileEl(t) {
-    const el = getTileEl(t);
-    if (el && el.parentNode) el.parentNode.removeChild(el);
-  }
   function layoutTiles() {
-    for (const t of tiles) updateTileEl(t);
+    for (const t of tiles) styleTile(t, false, false);
+  }
+  function removeTileEl(t) {
+    const el = qTileEl(t);
+    if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 
   // Score
-  function updateScore(delta, reset=false) {
-    if (reset) score = 0; else score += delta;
-    scoreEl.textContent = score;
+  function setScore(val) {
+    score = val; scoreEl.textContent = score;
     if (score > best) {
       best = score; bestEl.textContent = best;
       try { localStorage.setItem('2048-best', String(best)); } catch {}
     }
   }
+  function addScore(delta) { setScore(score + delta); }
 
-  // Game flow
-  function resetGrid() {
-    tiles = []; idSeq = 1;
-    score = 0; won = false; keepPlaying = false; over = false;
-    updateScore(0, true);
+  // Game
+  function reset() {
+    tiles = []; idSeq = 1; over = false; won = false; keepPlaying = false; moveLock = false;
+    setScore(0);
     tilesEl.innerHTML = '';
     winOv.classList.remove('show'); loseOv.classList.remove('show');
     setupGridCells();
-    computeMetrics();
+    computeCell();
 
-    // Добавление стартовых плиток после уверенной вёрстки
-    addRandomTile(true);
-    addRandomTile(true);
+    spawnRandom(true);
+    spawnRandom(true);
     saveUndo();
   }
 
-  function addRandomTile(spawn=false) {
-    const spot = randEmptyCell();
-    if (!spot) return false;
+  function spawnRandom(spawn=false) {
+    const empties = emptyCells();
+    if (!empties.length) return false;
+    const {x,y} = empties[Math.floor(Math.random()*empties.length)];
     const val = Math.random() < 0.9 ? 2 : 4;
-    const t = { id: idSeq++, x: spot.x, y: spot.y, value: val, scale: spawn ? 0.1 : 1 };
+    const t = { id: idSeq++, x, y, value: val, scale: spawn ? 0.1 : 1, _needsText: true };
     tiles.push(t);
-    spawnTileEl(t);
-    if (spawn) requestAnimationFrame(() => { t.scale = 1; updateTileEl(t); });
+    createTileEl(t);
+    if (spawn) requestAnimationFrame(() => {
+      t.scale = 1;
+      styleTile(t, true, false);
+    });
     return true;
   }
 
-  // Movement
-  const VECTORS = {
-    left:{x:-1,y:0}, right:{x:1,y:0}, up:{x:0,y:-1}, down:{x:0,y:1}
-  };
-  function buildTraversals(vector) {
+  function buildTraversals(vec) {
     const xs = [...Array(size).keys()];
     const ys = [...Array(size).keys()];
-    if (vector.x === 1) xs.reverse();
-    if (vector.y === 1) ys.reverse();
+    if (vec.x === 1) xs.reverse();
+    if (vec.y === 1) ys.reverse();
     return { xs, ys };
   }
-  function findFarthest(cell, vector, grid) {
+  function findFarthest(cell, vec, grid) {
     let prev, x = cell.x, y = cell.y;
-    do { prev = {x,y}; x += vector.x; y += vector.y; }
-    while (inBounds(x,y) && !grid[x][y]);
-    return { farthest: prev, next: {x,y} };
+    do { prev = {x,y}; x += vec.x; y += vec.y; } while (inBounds(x,y) && !grid[x][y]);
+    return { farthest: prev, next: {x, y} };
   }
-  function canMove() {
+  function canMoveAny() {
     const g = getGrid();
     for (let y=0;y<size;y++) for (let x=0;x<size;x++) if (!g[x][y]) return true;
     for (let y=0;y<size;y++) for (let x=0;x<size;x++) {
       const t = g[x][y]; if (!t) continue;
       for (const v of Object.values(VECTORS)) {
-        const nx=x+v.x, ny=y+v.y;
-        if (!inBounds(nx,ny)) continue;
-        const n=g[nx][ny];
-        if (n && n.value===t.value) return true;
+        const nx = x+v.x, ny = y+v.y; if (!inBounds(nx,ny)) continue;
+        const n = g[nx][ny]; if (n && n.value === t.value) return true;
       }
     }
     return false;
   }
 
+  const ANIM_MS = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--anim')) || 0;
+
   function move(dir) {
-    if (over) return;
-    const vector = VECTORS[dir];
-    const { xs, ys } = buildTraversals(vector);
+    if (over || moveLock) return;
+    moveLock = true;
+
+    const vec = VECTORS[dir];
+    const { xs, ys } = buildTraversals(vec);
     const grid = getGrid();
     let moved = false;
+    let gained = 0;
+    const toRemove = new Set();
+    const toBump = [];
 
     for (const t of tiles) t.merged = false;
 
@@ -403,60 +388,72 @@
       const t = grid[x][y];
       if (!t) continue;
 
-      const start = { x, y };
-      const { farthest, next } = findFarthest(start, vector, grid);
-      const nextTile = inBounds(next.x, next.y) ? grid[next.x][next.y] : null;
+      const { farthest, next } = findFarthest({x,y}, vec, grid);
+      const n = inBounds(next.x,next.y) ? grid[next.x][next.y] : null;
 
-      if (nextTile && nextTile.value === t.value && !nextTile.merged) {
+      if (n && n.value === t.value && !n.merged) {
+        // merge t into n-position (we store result in t)
         grid[t.x][t.y] = null;
         t.x = next.x; t.y = next.y;
-        t.value *= 2; t.merged = true;
+        t.value *= 2; t.merged = true; t._needsText = true;
         grid[next.x][next.y] = t;
 
-        const idx = tiles.indexOf(nextTile);
-        if (idx >= 0) { tiles.splice(idx, 1); removeTileEl(nextTile); }
-
-        updateTileEl(t, true);
-        updateScore(t.value);
+        toRemove.add(n);
         moved = true;
-
-        if (t.value === 2048 && !keepPlaying) won = true;
+        gained += t.value;
+        toBump.push(t);
       } else {
         if (farthest.x !== t.x || farthest.y !== t.y) {
           grid[t.x][t.y] = null;
           t.x = farthest.x; t.y = farthest.y;
           grid[t.x][t.y] = t;
-          updateTileEl(t);
           moved = true;
         }
       }
     }
 
-    if (moved) {
-      setTimeout(() => {
-        addRandomTile(true);
-        saveUndo();
-        if (!canMove()) { over = true; loseOv.classList.add('show'); }
-        else if (won && !keepPlaying) { winOv.classList.add('show'); }
-      }, 120);
+    if (!moved) { moveLock = false; return; }
+
+    // Remove merged counterparts from model + DOM
+    if (toRemove.size) {
+      tiles = tiles.filter(t => !toRemove.has(t));
+      for (const r of toRemove) removeTileEl(r);
     }
+
+    // Batch style updates in rAF
+    requestAnimationFrame(() => {
+      for (const t of tiles) styleTile(t, false, false);
+      for (const t of toBump) styleTile(t, false, true);
+    });
+
+    // After anim ends: spawn new and checks
+    setTimeout(() => {
+      if (gained) addScore(gained);
+      if (tiles.some(t => t.value === 2048) && !keepPlaying) {
+        won = true; winOv.classList.add('show');
+      } else {
+        spawnRandom(true);
+        saveUndo();
+        if (!canMoveAny()) { over = true; loseOv.classList.add('show'); }
+      }
+      moveLock = false;
+    }, ANIM_MS);
   }
 
-  // Undo
+  // Undo (single step)
   function saveUndo() {
     undoState = {
       tiles: tiles.map(t => ({...t})),
       score, won, keepPlaying, over
     };
   }
-  function doUndo() {
-    if (!undoState) return;
+  function undo() {
+    if (!undoState || moveLock) return;
     tiles = undoState.tiles.map(t => ({...t}));
     score = undoState.score; scoreEl.textContent = score;
     won = undoState.won; keepPlaying = undoState.keepPlaying; over = undoState.over;
     tilesEl.innerHTML = '';
-    computeMetrics();
-    for (const t of tiles) spawnTileEl(t);
+    for (const t of tiles) { t._needsText = true; createTileEl(t); }
     layoutTiles();
     winOv.classList.toggle('show', won && !keepPlaying);
     loseOv.classList.toggle('show', over);
@@ -476,31 +473,33 @@
     if (c === 'ArrowRight'|| c === 'KeyD') { e.preventDefault(); move('right'); }
     if (c === 'ArrowUp'   || c === 'KeyW') { e.preventDefault(); move('up'); }
     if (c === 'ArrowDown' || c === 'KeyS') { e.preventDefault(); move('down'); }
-    if (c === 'KeyU') { e.preventDefault(); doUndo(); }
+    if (c === 'KeyU') { e.preventDefault(); undo(); }
     if (c === 'KeyN' || c === 'KeyR') { e.preventDefault(); restart(); }
-  });
+  }, { passive: false });
 
-  // Touch swipes
-  let startX=0, startY=0, startT=0;
+  // Touch swipes (fast + passive)
+  let sx=0, sy=0, st=0;
   boardEl.addEventListener('touchstart', (e) => {
     const t = e.changedTouches[0];
-    startX = t.clientX; startY = t.clientY; startT = performance.now();
+    sx=t.clientX; sy=t.clientY; st=performance.now();
   }, {passive:true});
   boardEl.addEventListener('touchend', (e) => {
     const t = e.changedTouches[0];
-    const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
-    const dt = performance.now() - startT;
-    const thr = 24;
-    if (dt > 800) return;
-    if (Math.abs(dx) < thr && Math.abs(dy) < thr) return;
-    if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 'right' : 'left');
-    else move(dy > 0 ? 'down' : 'up');
+    const dx=t.clientX-sx, dy=t.clientY-sy, dt=performance.now()-st;
+    const thr=24; if (dt>800) return;
+    if (Math.abs(dx)<thr && Math.abs(dy)<thr) return;
+    if (Math.abs(dx)>Math.abs(dy)) move(dx>0?'right':'left');
+    else move(dy>0?'down':'up');
   }, {passive:true});
 
   // Buttons
+  function restart() {
+    winOv.classList.remove('show'); loseOv.classList.remove('show');
+    keepPlaying = false; won = false; over = false;
+    reset();
+  }
   btnNew.addEventListener('click', restart);
-  btnUndo.addEventListener('click', doUndo);
+  btnUndo.addEventListener('click', undo);
   sizeSel.addEventListener('change', () => {
     size = parseInt(sizeSel.value, 10);
     try { localStorage.setItem('2048-size', String(size)); } catch {}
@@ -511,23 +510,14 @@
   btnNewFromWin.addEventListener('click', restart);
   btnRestart.addEventListener('click', restart);
 
-  function restart() {
-    winOv.classList.remove('show'); loseOv.classList.remove('show');
-    keepPlaying = false; won = false; over = false;
-    setupGridCells();
-    ensureLayout(resetGrid);
-  }
-
-  // Boot — ждём, пока контейнер «проснётся», затем стартуем
+  // Boot
   function boot() {
     setupGridCells();
-    ensureLayout(resetGrid);
+    computeCell();
+    reset();
   }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
 </script>
 </body>
