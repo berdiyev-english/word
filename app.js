@@ -1,9 +1,50 @@
 class EnglishWordsApp {
   constructor() {
+    this.currentSection = 'about';
+    this.currentLevel = null;
+    this.currentCategory = null;
+
+    this.learningWords = [];
+    this.customWords = [];
+
+    this.audioPlayer = document.getElementById('audioPlayer');
+
+    this.studyMode = 'flashcards';
+    this.practiceMode = 'scheduled';
+
+    this.currentReviewIndex = 0;
+    this.currentReviewWords = [];
+    this.sessionQueue = [];
+
+    this.dbAvailable = false;
+
+    // Games
+    this.raceGame = null;
+    this.dashGame = null;
+
+    try {
+      this.init();
+    } catch (err) {
+      console.error('App init error:', err);
+      alert('Ошибка инициализации. Проверьте консоль браузера.');
+    }
   }
 
   /* INIT */
   init() {
+    this.detectDatabase();
+    this.loadData();
+    this.migrateExistingWords();
+    this.setupEventListeners();
+    this.setupTheme();
+    this.updateUI();
+
+    if (!this.dbAvailable) {
+      console.warn('oxford_words_data.js не найден или пуст.');
+      this.showNotification('Не найден oxford_words_data.js — проверьте файл и путь', 'warning');
+    }
+
+    if (this.currentSection === 'learning') this.renderLearningWords();
   }
 
   detectDatabase() {
