@@ -6,14 +6,15 @@
 <title>2048 — Mobile Perf</title>
 <style>
   :root {
-    --gap: 12px;
-    --radius: 12px;
-    --board-bg: #bbada0;
-    --cell-bg: rgba(238, 228, 218, 0.35);
-    --page-bg: #0f1217;
-    --anim: 90ms;
-    --ease: cubic-bezier(.2,.8,.2,1);
-  }
+  --gap: 12px;
+  --radius: 12px;
+  --board-bg: #bbada0;
+  --cell-bg: rgba(238, 228, 218, 0.35);
+  --page-bg: #0f1217;
+  --anim: 90ms;
+  --ease: cubic-bezier(.2,.8,.2,1);
+  --y-fix: 2px; /* опускаем плитки чуть ниже; попробуй 1–3px под свой экран */
+}
   @media (prefers-reduced-motion: reduce) {
     :root { --anim: 0ms; }
   }
@@ -93,7 +94,7 @@
     display: grid; place-items: center;
     font-weight: 900;
     /* только GPU-композитинг */
-    transform: translate3d(var(--tx,0), var(--ty,0), 0) scale(var(--s,1));
+    transform: translate3d(var(--tx,0), calc(var(--ty,0) + var(--y-fix,0px)), 0) scale(var(--s,1));
     transition: transform var(--anim) var(--ease);
     will-change: transform;
     backface-visibility: hidden;
@@ -102,11 +103,11 @@
   .tile.bump {
     animation: bump var(--anim) ease-out;
   }
-  @keyframes bump {
-    0%   { transform: translate3d(var(--tx), var(--ty), 0) scale(1); }
-    50%  { transform: translate3d(var(--tx), var(--ty), 0) scale(1.11); }
-    100% { transform: translate3d(var(--tx), var(--ty), 0) scale(1); }
-  }
+@keyframes bump {
+  0%   { transform: translate3d(var(--tx), calc(var(--ty) + var(--y-fix,0px)), 0) scale(1); }
+  50%  { transform: translate3d(var(--tx), calc(var(--ty) + var(--y-fix,0px)), 0) scale(1.11); }
+  100% { transform: translate3d(var(--tx), calc(var(--ty) + var(--y-fix,0px)), 0) scale(1); }
+}
 
   .overlay {
     position: absolute; inset: 0;
