@@ -1,4 +1,4 @@
-class EnglishWordsApp { constructor() { this.currentSection = 'about'; this.currentLevel = null; // e.g., A1..C2, or category key this.currentCategory = null; // 'IRREGULARS' | 'PREPOSITIONS' | null
+class EnglishWordsApp { constructor() { this.currentSection = 'about'; this.currentLevel = null; this.currentCategory = null;
 
 this.learningWords = [];
 this.customWords = [];
@@ -39,7 +39,14 @@ try {
 }
 }
 
-init() { this.detectDatabase(); this.loadData(); this.migrateExistingWords(); this.setupEventListeners(); this.updateUI(); this.setupTheme();
+init() { this.detectDatabase(); this.loadData(); this.migrateExistingWords(); this.setupEventListeners(); this.setupNavClickFallback(); // страхующий обработчик кликов по меню this.updateUI(); this.setupTheme();
+
+// На всякий случай гарантируем, что модалка игры скрыта и не перехватывает клики
+const modal = document.getElementById('raceQuizModal');
+if (modal) {
+  modal.classList.add('hidden');
+  modal.style.pointerEvents = 'none';
+}
 
 if (!this.dbAvailable) {
   console.warn('oxford_words_data.js не найден или пуст.');
@@ -96,6 +103,7 @@ if (newTranslationInput) newTranslationInput.addEventListener('keypress', (e) =>
 // Bulk add
 const bulkAddBtn = document.getElementById('bulkAddBtn');
 if (bulkAddBtn) bulkAddBtn.addEventListener('click', () => this.addBulkWords());
+
 // Modes
 const modeFlashcards = document.getElementById('modeFlashcards');
 if (modeFlashcards) modeFlashcards.addEventListener('click', () => {
@@ -112,6 +120,7 @@ if (modeList) modeList.addEventListener('click', () => {
   this.studyMode = 'list'; this.updateModeButtons();
   if (this.currentSection === 'learning') this.renderLearningWords();
 });
+
 const practiceScheduled = document.getElementById('practiceScheduled');
 if (practiceScheduled) practiceScheduled.addEventListener('click', () => {
   this.practiceMode = 'scheduled'; this.updatePracticeButtons();
@@ -150,9 +159,19 @@ const raceResetBtn = document.getElementById('raceResetBtn');
 if (raceResetBtn) raceResetBtn.addEventListener('click', () => this.raceReset());
 }
 
+// СТРАХУЮЩИЙ ГЛОБАЛЬНЫЙ ОБРАБОТЧИК КЛИКОВ ПО МЕНЮ setupNavClickFallback() { // На уровне документа в режиме capture — перехватим клик даже если есть конфликтующие обработчики document.addEventListener('click', (e) => { const btn = e.target.closest('.nav-item'); if (!btn) return; const section = btn.dataset.section; if (!section) return; e.preventDefault(); e.stopPropagation(); if (window.app) window.app.switchSection(section); }, true);
+
+// Глобальная функция для inline-обработчиков, если вы их используете
+window.gotoSection = (s) => { if (window.app) window.app.switchSection(s); };
+}
+
 updateModeButtons() { document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active')); const id = this.studyMode === 'flashcards' ? '#modeFlashcards' : this.studyMode === 'quiz' ? '#modeQuiz' : '#modeList'; const el = document.querySelector(id); if (el) el.classList.add('active'); } updatePracticeButtons() { document.querySelectorAll('.practice-btn').forEach(b => b.classList.remove('active')); const el = document.querySelector(this.practiceMode === 'scheduled' ? '#practiceScheduled' : '#practiceEndless'); if (el) el.classList.add('active'); }
 
-/* NAV */ switchSection(sectionName) { document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active')); const navBtn = document.querySelector(.nav-item[data-section="${sectionName}"]); if (navBtn) navBtn.classList.add('active');
+/* NAV */ switchSection(sectionName) { // Если вдруг модалка игры открыта — закрываем, чтобы не перекрывала нажатия const modal = document.getElementById('raceQuizModal'); if (modal) { modal.classList.add('hidden'); modal.style.pointerEvents = 'none'; }
+
+document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+const navBtn = document.querySelector(`.nav-item[data-section="${sectionName}"]`);
+if (navBtn) navBtn.classList.add('active');
 
 document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
 const sec = document.getElementById(sectionName);
@@ -330,7 +349,7 @@ return combined.slice(0, 50);
 
 renderStudyUI() { if (this.studyMode === 'flashcards') this.showFlashcard(); else if (this.studyMode === 'quiz') this.showQuiz(); else this.showAllLearningWords(); }
 
-/* IMAGES: britlex + fallback */ buildPrimaryImageUrl(word) { const w = (word || '').toLowerCase().replace(/[^a-z]/g, ''); return https://britlex.ru/images/${w}.jpg; } handleMediaImageError(evt) { const img = evt.target; img.onerror = null; img.src = '/nophoto.jpg'; }
+/* IMAGES */ buildPrimaryImageUrl(word) { const w = (word || '').toLowerCase().replace(/[^a-z]/g, ''); return https://britlex.ru/images/${w}.jpg; } handleMediaImageError(evt) { const img = evt.target; img.onerror = null; img.src = '/nophoto.jpg'; }
 
 /* FLASHCARDS */ showFlashcard() { const learningWordsList = document.getElementById('learningWordsList'); if (!learningWordsList) return;
 
@@ -384,7 +403,7 @@ learningWordsList.innerHTML = `
   </div>`;
 } showFlashcardAnswer() { const el = document.getElementById('flashcardAnswer'); if (el) el.classList.remove('hidden'); }
 
-/* QUIZ: no play button; speak correct after answer */ showQuiz() { const learningWordsList = document.getElementById('learningWordsList'); if (!learningWordsList) return;
+/* QUIZ */ showQuiz() { const learningWordsList = document.getElementById('learningWordsList'); if (!learningWordsList) return;
 
 const currentWord = this.currentReviewWords[this.currentReviewIndex];
 if (!currentWord) return this.showReviewComplete();
@@ -392,7 +411,7 @@ if (!currentWord) return this.showReviewComplete();
 const direction = Math.random() < 0.5 ? 'EN_RU' : 'RU_EN';
 const questionText = direction === 'EN_RU' ? currentWord.word : currentWord.translation;
 const correct = direction === 'EN_RU' ? currentWord.translation : currentWord.word;
-const correctEnglish = currentWord.word; // for audio
+const correctEnglish = currentWord.word;
 
 const options = this.buildQuizOptions(currentWord, direction);
 const shuffled = this.shuffle(options);
@@ -447,8 +466,8 @@ pick(sameLevel);
 pick(others);
 
 const options = Array.from(set);
-return options.slice(0, Math.max(2, Math.min(4, options.length)));
-} getAllWordsPool() { const pool = []; if (this.dbAvailable) { const levelKeys = ['A1','A2','B1','B2','C1','C2']; levelKeys.forEach(lvl => { (oxfordWordsDatabase[lvl] || []).forEach(w => pool.push({ word: w.word, translation: w.translation, level: lvl })); }); (oxfordWordsDatabase.irregular_verbs || []).forEach(w => pool.push({ word: w.word, translation: w.translation, level: 'IRREGULARS' })); (oxfordWordsDatabase.prepositions || []).forEach(w => pool.push({ word: w.word, translation: w.translation, level: 'PREPOSITIONS' })); } this.customWords.forEach(w => pool.push({ word: w.word, translation: w.translation, level: w.level })); return pool; } answerQuiz(correct, chosen, correctEnglish, el) { const isCorrect = correct === chosen; if (el) { el.classList.add(isCorrect ? 'correct' : 'wrong'); if (!isCorrect) { const options = Array.from(document.querySelectorAll('.quiz-option')); const corr = options.find(o => o.dataset.value === correct); if (corr) corr.classList.add('correct'); } } // Play correct English after answer setTimeout(() => { this.playAudio(correctEnglish).catch(()=>{}); }, 100);
+return options.slice(0, Math.max(2, Math.min(4, options.length));
+} getAllWordsPool() { const pool = []; if (this.dbAvailable) { const levelKeys = ['A1','A2','B1','B2','C1','C2']; levelKeys.forEach(lvl => { (oxfordWordsDatabase[lvl] || []).forEach(w => pool.push({ word: w.word, translation: w.translation, level: lvl })); }); (oxfordWordsDatabase.irregular_verbs || []).forEach(w => pool.push({ word: w.word, translation: w.translation, level: 'IRREGULARS' })); (oxfordWordsDatabase.prepositions || []).forEach(w => pool.push({ word: w.word, translation: w.translation, level: 'PREPOSITIONS' })); } this.customWords.forEach(w => pool.push({ word: w.word, translation: w.translation, level: w.level })); return pool; } answerQuiz(correct, chosen, correctEnglish, el) { const isCorrect = correct === chosen; if (el) { el.classList.add(isCorrect ? 'correct' : 'wrong'); if (!isCorrect) { const options = Array.from(document.querySelectorAll('.quiz-option')); const corr = options.find(o => o.dataset.value === correct); if (corr) corr.classList.add('correct'); } } setTimeout(() => { this.playAudio(correctEnglish).catch(()=>{}); }, 100);
 
 const q = isCorrect ? 5 : 0;
 setTimeout(() => this.handleAnswer(q), 450);
@@ -572,7 +591,7 @@ parsed.forEach(item => {
 this.saveData(); this.renderCustomWords(); this.updateUI();
 this.showNotification(`Добавлено: ${added}, пропущено (уже есть): ${skipped}`, 'info');
 document.getElementById('bulkTextarea').value = '';
-} parseBulkText(text) { // Lines; collect as "current english" and accumulating russian until next '-' const lines = text.split(/\r?\n/); const result = []; let current = null; for (let raw of lines) { const line = raw.trim(); if (!line) continue; // Look for "eng - ..." const dashIdx = line.indexOf(' - '); if (dashIdx !== -1) { // push previous if (current && current.word && current.translations.length) { // normalize commas and trim each current.translations = current.translations.join(',').split(',').map(s => s.trim()).filter(Boolean); result.push(current); } const eng = line.slice(0, dashIdx).trim(); const rusPart = line.slice(dashIdx + 3).trim(); current = { word: eng, translations: rusPart ? rusPart.split(',').map(s => s.trim()) : [] }; } else { // continuation translations (comma separated) if (current) { current.translations.push(...line.split(',').map(s => s.trim())); } } } if (current && current.word && current.translations.length) { current.translations = current.translations.join(',').split(',').map(s => s.trim()).filter(Boolean); result.push(current); } return result; } existsInDb(word) { if (!this.dbAvailable) return false; const inLevels = ['A1','A2','B1','B2','C1','C2'].some(l => (oxfordWordsDatabase[l] || []).some(w => w.word === word)); const inIr = (oxfordWordsDatabase.irregular_verbs || []).some(w => w.word === word); const inPrep = (oxfordWordsDatabase.prepositions || []).some(w => w.word === word); return inLevels || inIr || inPrep; } removeCustomWord(wordId) { this.customWords = this.customWords.filter(w => w.id !== wordId); this.saveData(); this.renderCustomWords(); this.updateUI(); this.showNotification('Слово удалено', 'info'); } renderCustomWords() { const customWordsContainer = document.getElementById('customWords'); if (!customWordsContainer) return;
+} parseBulkText(text) { const lines = text.split(/\r?\n/); const result = []; let current = null; for (let raw of lines) { const line = raw.trim(); if (!line) continue; const dashIdx = line.indexOf(' - '); if (dashIdx !== -1) { if (current && current.word && current.translations.length) { current.translations = current.translations.join(',').split(',').map(s => s.trim()).filter(Boolean); result.push(current); } const eng = line.slice(0, dashIdx).trim(); const rusPart = line.slice(dashIdx + 3).trim(); current = { word: eng, translations: rusPart ? rusPart.split(',').map(s => s.trim()) : [] }; } else { if (current) { current.translations.push(...line.split(',').map(s => s.trim())); } } } if (current && current.word && current.translations.length) { current.translations = current.translations.join(',').split(',').map(s => s.trim()).filter(Boolean); result.push(current); } return result; } existsInDb(word) { if (!this.dbAvailable) return false; const inLevels = ['A1','A2','B1','B2','C1','C2'].some(l => (oxfordWordsDatabase[l] || []).some(w => w.word === word)); const inIr = (oxfordWordsDatabase.irregular_verbs || []).some(w => w.word === word); const inPrep = (oxfordWordsDatabase.prepositions || []).some(w => w.word === word); return inLevels || inIr || inPrep; } removeCustomWord(wordId) { this.customWords = this.customWords.filter(w => w.id !== wordId); this.saveData(); this.renderCustomWords(); this.updateUI(); this.showNotification('Слово удалено', 'info'); } renderCustomWords() { const customWordsContainer = document.getElementById('customWords'); if (!customWordsContainer) return;
 
 if (this.customWords.length === 0) {
   customWordsContainer.innerHTML = `
@@ -637,7 +656,7 @@ try {
 
 /* UI + NOTIFS */ updateUI() { const learningCount = document.getElementById('learningCount'); if (learningCount) learningCount.textContent = ${this.learningWords.length} слов;
 
-// Level counts
+// Levels
 document.querySelectorAll('.level-card[data-level]').forEach(card => {
   const level = card.dataset.level;
   const wordCount = card.querySelector('.word-count');
@@ -646,7 +665,7 @@ document.querySelectorAll('.level-card[data-level]').forEach(card => {
   const total = dbWords + customWords;
   if (wordCount) wordCount.textContent = `${total} слов`;
 });
-// Category counts
+// Categories
 const irregularCount = (this.dbAvailable ? (oxfordWordsDatabase.irregular_verbs || []).length : 0) + this.customWords.filter(w => w.level === 'IRREGULARS').length;
 const prepCount = (this.dbAvailable ? (oxfordWordsDatabase.prepositions || []).length : 0) + this.customWords.filter(w => w.level === 'PREPOSITIONS').length;
 const catIr = document.querySelector('[data-category="IRREGULARS"] .word-count');
@@ -734,14 +753,12 @@ el.innerHTML = `
   ${levelCards}`;
 }
 
-/* GAME: Endless Runner (Racing) */ raceStart() { if (!this.race.canvas) return; if (this.race.running && !this.race.paused) return; this.race.running = true; this.race.paused = false; if (!this.race.raf) this.raceLoop(); } raceTogglePause() { this.race.paused = !this.race.paused; if (!this.race.paused && this.race.running) this.raceLoop(); } raceReset() { cancelAnimationFrame(this.race.raf); this.race.raf = null; this.race.running = false; this.race.paused = false; this.race.speed = 2; this.race.distance = 0; this.race.correctNeeded = 0; this.race.lastCheckpoint = 0; this.race.obstacles = []; this.race.player = { x: 30, y: 160, w: 20, h: 20, vy: 0, onGround: true }; this.raceClear(); this.raceDraw(); } raceJump() { if (!this.race.running || this.race.paused) return; if (this.race.player.onGround) { this.race.player.vy = -6.5; this.race.player.onGround = false; } } raceSpawnObstacle() { const y = 170; const h = 15; const w = 15; this.race.obstacles.push({ x: this.race.canvas.width + 10, y, w, h }); } raceLoop() { if (!this.race.running || this.race.paused) return; const ctx = this.race.ctx; this.raceUpdate(); this.raceDraw(); this.race.raf = requestAnimationFrame(() => this.raceLoop()); } raceUpdate() { // Physics const p = this.race.player; p.vy += 0.35; // gravity p.y += p.vy; if (p.y >= 160) { p.y = 160; p.vy = 0; p.onGround = true; }
+/* GAME */ raceStart() { if (!this.race.canvas) return; if (this.race.running && !this.race.paused) return; this.race.running = true; this.race.paused = false; if (!this.race.raf) this.raceLoop(); } raceTogglePause() { this.race.paused = !this.race.paused; if (!this.race.paused && this.race.running) this.raceLoop(); } raceReset() { cancelAnimationFrame(this.race.raf); this.race.raf = null; this.race.running = false; this.race.paused = false; this.race.speed = 2; this.race.distance = 0; this.race.correctNeeded = 0; this.race.lastCheckpoint = 0; this.race.obstacles = []; this.race.player = { x: 30, y: 160, w: 20, h: 20, vy: 0, onGround: true }; this.raceClear(); this.raceDraw(); } raceJump() { if (!this.race.running || this.race.paused) return; if (this.race.player.onGround) { this.race.player.vy = -6.5; this.race.player.onGround = false; } } raceSpawnObstacle() { const y = 170; const h = 15; const w = 15; this.race.obstacles.push({ x: this.race.canvas.width + 10, y, w, h }); } raceLoop() { if (!this.race.running || this.race.paused) return; this.raceUpdate(); this.raceDraw(); this.race.raf = requestAnimationFrame(() => this.raceLoop()); } raceUpdate() { const p = this.race.player; p.vy += 0.35; p.y += p.vy; if (p.y >= 160) { p.y = 160; p.vy = 0; p.onGround = true; }
 
-// Obstacles
 if (Math.random() < 0.03) this.raceSpawnObstacle();
 this.race.obstacles.forEach(o => o.x -= this.race.speed);
 this.race.obstacles = this.race.obstacles.filter(o => o.x + o.w > 0);
 
-// Collision
 for (const o of this.race.obstacles) {
   if (this.rectsOverlap(p, o)) {
     this.racePauseForQuiz();
@@ -749,16 +766,14 @@ for (const o of this.race.obstacles) {
   }
 }
 
-// Distance & speed
 this.race.distance += this.race.speed;
 if (this.race.distance - this.race.lastCheckpoint > 800) {
   this.racePauseForQuiz();
 }
-// Speed up slowly
 this.race.speed = Math.min(12, this.race.speed + 0.0015);
-} raceDraw() { const ctx = this.race.ctx, c = this.race.canvas; ctx.clearRect(0,0,c.width,c.height); // ground ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, 180, c.width, 2); // player ctx.fillStyle = '#10b981'; ctx.fillRect(this.race.player.x, this.race.player.y, this.race.player.w, this.race.player.h); // obstacles ctx.fillStyle = '#ef4444'; this.race.obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h)); // HUD ctx.fillStyle = '#64748b'; ctx.font = '12px Inter, sans-serif'; ctx.fillText(Скорость: ${this.race.speed.toFixed(1)} | Дистанция: ${Math.floor(this.race.distance)}, 8, 14); } rectsOverlap(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+} raceDraw() { const ctx = this.race.ctx, c = this.race.canvas; ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, 180, c.width, 2); ctx.fillStyle = '#10b981'; ctx.fillRect(this.race.player.x, this.race.player.y, this.race.player.w, this.race.player.h); ctx.fillStyle = '#ef4444'; this.race.obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h)); ctx.fillStyle = '#64748b'; ctx.font = '12px Inter, sans-serif'; ctx.fillText(Скорость: ${this.race.speed.toFixed(1)} | Дистанция: ${Math.floor(this.race.distance)}, 8, 14); } rectsOverlap(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h > b.y; }
 
-racePauseForQuiz() { if (!this.race.running) return; this.race.paused = true; this.race.correctNeeded = 3; this.race.lastCheckpoint = this.race.distance; // Show quiz modal const modal = document.getElementById('raceQuizModal'); const content = document.getElementById('raceQuizContent'); if (modal && content) { modal.classList.remove('hidden'); content.innerHTML = <div class="text-center"><h3>Ответьте правильно на 3 слова</h3></div>; this.raceNextMiniQuiz(); } } raceNextMiniQuiz() { const content = document.getElementById('raceQuizContent'); const pool = this.getAllWordsPool(); if (pool.length === 0) { content.innerHTML = <div class="empty-state"><i class="fas fa-book-open"></i><h3>Нет слов в активном словаре</h3><p>Добавьте слова и вернитесь в игру</p></div>; return; } // pick random word from learningWords if possible const learningPool = this.learningWords.filter(w => !w.isLearned); const base = (learningPool.length ? learningPool : pool); const currentWord = base[Math.floor(Math.random() * base.length)];
+racePauseForQuiz() { if (!this.race.running) return; this.race.paused = true; this.race.correctNeeded = 3; this.race.lastCheckpoint = this.race.distance; const modal = document.getElementById('raceQuizModal'); const content = document.getElementById('raceQuizContent'); if (modal && content) { modal.classList.remove('hidden'); modal.style.pointerEvents = 'auto'; // модалка принимает клики только когда показана content.innerHTML = <div class="text-center"><h3>Ответьте правильно на 3 слова</h3></div>; this.raceNextMiniQuiz(); } } raceNextMiniQuiz() { const content = document.getElementById('raceQuizContent'); const modal = document.getElementById('raceQuizModal'); const pool = this.getAllWordsPool(); if (pool.length === 0) { if (content) { content.innerHTML = <div class="empty-state"><i class="fas fa-book-open"></i><h3>Нет слов в активном словаре</h3><p>Добавьте слова и вернитесь в игру</p></div>; } return; } const learningPool = this.learningWords.filter(w => !w.isLearned); const base = (learningPool.length ? learningPool : pool); const currentWord = base[Math.floor(Math.random() * base.length)];
 
 const direction = Math.random() < 0.5 ? 'EN_RU' : 'RU_EN';
 const questionText = direction === 'EN_RU' ? currentWord.word : currentWord.translation;
@@ -773,9 +788,7 @@ content.innerHTML = `
     <div class="quiz-question">${questionText}</div>
     <div class="quiz-sub">Выберите правильный вариант</div>
     <div class="quiz-options">
-      ${shuffled.map((opt) => `
-        <div class="quiz-option" data-value="${this.safe(opt)}">${opt}</div>
-      `).join('')}
+      ${shuffled.map((opt) => `<div class="quiz-option" data-value="${this.safe(opt)}">${opt}</div>`).join('')}
     </div>
   </div>`;
 Array.from(content.querySelectorAll('.quiz-option')).forEach(el => {
@@ -787,8 +800,7 @@ Array.from(content.querySelectorAll('.quiz-option')).forEach(el => {
       this.playAudio(correctEnglish).catch(()=>{});
       this.race.correctNeeded -= 1;
       if (this.race.correctNeeded <= 0) {
-        // close modal and resume
-        document.getElementById('raceQuizModal').classList.add('hidden');
+        if (modal) { modal.classList.add('hidden'); modal.style.pointerEvents = 'none'; }
         this.race.paused = false;
         this.raceLoop();
       } else {
