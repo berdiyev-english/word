@@ -686,7 +686,7 @@ class EnglishWordsApp {
         </div>
 
         <div class="quiz-container">
-          <img src="${imgUrl}" data-word="${this.safeAttr(currentWord.word)}" alt="image for ${currentWord.word}" class="flashcard-image" onerror="app.handleMediaImageError(event)"/>
+          <img src="${imgUrl}" data-word="${this.safeAttr(currentWord.word)}" alt="imageword" class="flashcard-image" onerror="app.handleMediaImageError(event)"/>
           <div class="quiz-question">${questionText}</div>
           <div class="quiz-sub">${currentWord.level} • Выберите правильный вариант</div>
 
