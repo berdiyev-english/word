@@ -1,14 +1,12 @@
-class EnglishWordsApp { constructor() { this.currentSection = 'about'; this.currentLevel = null; // e.g., A1..C2, or category key this.currentCategory = null; // 'IRREGULARS' | 'PREPOSITIONS' | null
+class EnglishWordsApp { constructor() { this.currentSection = 'about'; this.currentLevel = null; // A1..C2 this.currentCategory = null; // 'IRREGULARS' | 'PREPOSITIONS' | null
 
 this.learningWords = [];
 this.customWords = [];
 
 this.audioPlayer = document.getElementById('audioPlayer');
-this.currentAudioUrl = null;
 
-this.studyMode = 'flashcards';
-this.practiceMode = 'scheduled';
-this.directionMode = 'auto';
+this.studyMode = 'flashcards';     // 'flashcards' | 'quiz' | 'list'
+this.practiceMode = 'scheduled';   // 'scheduled' | 'endless'
 
 this.currentReviewIndex = 0;
 this.currentReviewWords = [];
@@ -16,26 +14,11 @@ this.sessionQueue = [];
 
 this.dbAvailable = false;
 
-// Game state
-this.race = {
-  running: false,
-  paused: false,
-  speed: 2,
-  distance: 0,
-  correctNeeded: 0,
-  lastCheckpoint: 0,
-  obstacles: [],
-  player: { x: 30, y: 160, w: 20, h: 20, vy: 0, onGround: true },
-  canvas: null,
-  ctx: null,
-  raf: null
-};
-
 try {
   this.init();
 } catch (err) {
   console.error('App init error:', err);
-  alert('Произошла ошибка инициализации приложения. Проверьте консоль браузера.');
+  alert('Ошибка инициализации. Проверьте консоль браузера.');
 }
 }
 
@@ -43,7 +26,7 @@ init() { this.detectDatabase(); this.loadData(); this.migrateExistingWords(); th
 
 if (!this.dbAvailable) {
   console.warn('oxford_words_data.js не найден или пуст.');
-  this.showNotification('Не найден oxford_words_data.js — проверьте имя и путь файла', 'warning');
+  this.showNotification('Не найден oxford_words_data.js — проверьте файл и путь', 'warning');
 }
 
 if (this.currentSection === 'learning') this.renderLearningWords();
@@ -55,10 +38,7 @@ detectDatabase() { try { this.dbAvailable = (typeof oxfordWordsDatabase !== 'und
 
 /* STORAGE */ loadData() { try { const savedLearning = localStorage.getItem('learningWords'); const savedCustom = localStorage.getItem('customWords'); if (savedLearning) this.learningWords = JSON.parse(savedLearning); if (savedCustom) this.customWords = JSON.parse(savedCustom); } catch (e) { console.error('Load error', e); } } saveData() { try { localStorage.setItem('learningWords', JSON.stringify(this.learningWords)); localStorage.setItem('customWords', JSON.stringify(this.customWords)); this.saveStatistics(); } catch (e) { console.error('Save error', e); this.showNotification('Ошибка сохранения данных', 'error'); } } saveStatistics() { const stats = { totalWordsLearned: this.learningWords.filter(w => w.isLearned).length, totalWordsLearning: this.learningWords.length, customWordsAdded: this.customWords.length, lastActivity: new Date().toISOString(), dailyProgress: this.getDailyProgress() }; localStorage.setItem('appStatistics', JSON.stringify(stats)); } getDailyProgress() { const today = new Date().toDateString(); const todayWords = this.learningWords.filter(w => w.dateLearned && new Date(w.dateLearned).toDateString() === today ); return todayWords.length; }
 
-/* EVENTS */ setupEventListeners() { const bottomNav = document.getElementById('bottomNav'); if (bottomNav) { bottomNav.addEventListener('click', (e) => { const btn = e.target.closest('.nav-item'); if (!btn) return; const section = btn.dataset.section; if (!section) return; this.switchSection(section); }); } document.querySelectorAll('.nav-item').forEach(btn => { btn.addEventListener('click', (e) => { e.preventDefault(); const section = btn.dataset.section; if (section) this.switchSection(section); }); });
-
-const themeToggle = document.getElementById('themeToggle');
-if (themeToggle) themeToggle.addEventListener('click', () => this.toggleTheme());
+/* EVENTS */ setupEventListeners() { // Bottom nav (delegation) const bottomNav = document.getElementById('bottomNav'); if (bottomNav) { bottomNav.addEventListener('click', (e) => { const btn = e.target.closest('.nav-item'); if (!btn) return; const section = btn.dataset.section; if (!section) return; this.switchSection(section); }); } // Theme toggle const themeToggle = document.getElementById('themeToggle'); if (themeToggle) themeToggle.addEventListener('click', () => this.toggleTheme());
 
 // Level cards
 document.querySelectorAll('.level-card[data-level]').forEach(card => {
@@ -75,6 +55,7 @@ document.querySelectorAll('.level-card[data-category]').forEach(card => {
   });
 });
 
+// Back button in words list
 const backBtn = document.getElementById('backToLevels');
 if (backBtn) backBtn.addEventListener('click', () => this.hideLevelWords());
 
@@ -96,6 +77,7 @@ if (newTranslationInput) newTranslationInput.addEventListener('keypress', (e) =>
 // Bulk add
 const bulkAddBtn = document.getElementById('bulkAddBtn');
 if (bulkAddBtn) bulkAddBtn.addEventListener('click', () => this.addBulkWords());
+
 // Modes
 const modeFlashcards = document.getElementById('modeFlashcards');
 if (modeFlashcards) modeFlashcards.addEventListener('click', () => {
@@ -112,6 +94,8 @@ if (modeList) modeList.addEventListener('click', () => {
   this.studyMode = 'list'; this.updateModeButtons();
   if (this.currentSection === 'learning') this.renderLearningWords();
 });
+
+// Practice
 const practiceScheduled = document.getElementById('practiceScheduled');
 if (practiceScheduled) practiceScheduled.addEventListener('click', () => {
   this.practiceMode = 'scheduled'; this.updatePracticeButtons();
@@ -123,6 +107,7 @@ if (practiceEndless) practiceEndless.addEventListener('click', () => {
   if (this.currentSection === 'learning') this.renderLearningWords();
 });
 
+// Bulk actions for level/category
 const addAllBtn = document.getElementById('addAllLevelBtn');
 if (addAllBtn) addAllBtn.addEventListener('click', () => {
   if (this.currentLevel) this.addAllFromLevel(this.currentLevel);
@@ -133,21 +118,6 @@ if (removeAllBtn) removeAllBtn.addEventListener('click', () => {
   if (this.currentLevel) this.removeAllFromLevel(this.currentLevel);
   else if (this.currentCategory) this.removeAllFromCategory(this.currentCategory);
 });
-
-// Game controls
-const raceCanvas = document.getElementById('raceCanvas');
-if (raceCanvas) {
-  this.race.canvas = raceCanvas;
-  this.race.ctx = raceCanvas.getContext('2d');
-  raceCanvas.addEventListener('mousedown', () => this.raceJump());
-  raceCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); this.raceJump(); }, { passive: false });
-}
-const raceStartBtn = document.getElementById('raceStartBtn');
-if (raceStartBtn) raceStartBtn.addEventListener('click', () => this.raceStart());
-const racePauseBtn = document.getElementById('racePauseBtn');
-if (racePauseBtn) racePauseBtn.addEventListener('click', () => this.raceTogglePause());
-const raceResetBtn = document.getElementById('raceResetBtn');
-if (raceResetBtn) raceResetBtn.addEventListener('click', () => this.raceReset());
 }
 
 updateModeButtons() { document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active')); const id = this.studyMode === 'flashcards' ? '#modeFlashcards' : this.studyMode === 'quiz' ? '#modeQuiz' : '#modeList'; const el = document.querySelector(id); if (el) el.classList.add('active'); } updatePracticeButtons() { document.querySelectorAll('.practice-btn').forEach(b => b.classList.remove('active')); const el = document.querySelector(this.practiceMode === 'scheduled' ? '#practiceScheduled' : '#practiceEndless'); if (el) el.classList.add('active'); }
@@ -178,9 +148,8 @@ this.renderLevelWords(level);
 if (levelsGrid) levelsGrid.style.display = 'none';
 if (categoriesGrid) categoriesGrid.style.display = 'none';
 if (wordsContainer) wordsContainer.classList.remove('hidden');
-if (currentLevelTitle) {
-  currentLevelTitle.textContent = category === 'IRREGULARS' ? 'Неправильные глаголы' : 'Предлоги';
-}
+if (currentLevelTitle) currentLevelTitle.textContent = category === 'IRREGULARS' ? 'Неправильные глаголы' : 'Предлоги';
+
 this.renderCategoryWords(category);
 } hideLevelWords() { const wordsContainer = document.getElementById('wordsContainer'); const levelsGrid = document.getElementById('levelsGrid'); const categoriesGrid = document.getElementById('categoriesGrid'); if (levelsGrid) levelsGrid.style.display = 'grid'; if (categoriesGrid) categoriesGrid.style.display = 'grid'; if (wordsContainer) wordsContainer.classList.add('hidden'); this.currentLevel = null; this.currentCategory = null; } safe(s) { return String(s).replace(/\/g, '\\').replace(/'/g, "\'"); }
 
@@ -270,9 +239,9 @@ wordsList.innerHTML = words.map(wd => {
 }).join('');
 }
 
-addAllFromLevel(level) { const pool = this.getWordsByLevel(level); if (!pool.length) { this.showNotification(Нет слов уровня ${level} для добавления, 'warning'); return; } let added = 0; pool.forEach(w => { if (!this.learningWords.find(x => x.word === w.word)) { this.learningWords.push(this.createLearningWord(w.word, w.translation, level)); added++; } }); if (added === 0) { this.showNotification('Все слова этого уровня уже добавлены', 'info'); } else { this.saveData(); this.updateUI(); this.showNotification(Добавлено ${added} слов из уровня ${level}, 'success'); } this.renderLevelWords(level); } removeAllFromLevel(level) { const inLevel = this.learningWords.filter(w => w.level === level).length; if (inLevel === 0) { this.showNotification('В изучении нет слов этого уровня', 'info'); return; } const before = this.learningWords.length; this.learningWords = this.learningWords.filter(w => w.level !== level); const removed = before - this.learningWords.length; this.saveData(); this.updateUI(); this.showNotification(Удалено ${removed} слов уровня ${level}, 'info'); this.renderLevelWords(level); } addAllFromCategory(category) { const pool = this.getWordsByCategory(category); if (!pool.length) { this.showNotification(Нет слов категории, 'warning'); return; } let added = 0; pool.forEach(w => { if (!this.learningWords.find(x => x.word === w.word)) { this.learningWords.push(this.createLearningWord(w.word, w.translation, category)); added++; } }); if (added === 0) this.showNotification('Все слова этой категории уже добавлены', 'info'); else { this.saveData(); this.updateUI(); this.showNotification(Добавлено ${added} слов из категории, 'success'); } this.renderCategoryWords(category); } removeAllFromCategory(category) { const inCat = this.learningWords.filter(w => w.level === category).length; if (inCat === 0) { this.showNotification('В изучении нет слов этой категории', 'info'); return; } const before = this.learningWords.length; this.learningWords = this.learningWords.filter(w => w.level !== category); const removed = before - this.learningWords.length; this.saveData(); this.updateUI(); this.showNotification(Удалено ${removed} слов категории, 'info'); this.renderCategoryWords(category); } getWordsByLevel(level) { const db = this.dbAvailable ? (oxfordWordsDatabase[level] || []) : []; const customs = this.customWords.filter(w => w.level === level) .map(w => ({ word: w.word, translation: w.translation })); return [...db, ...customs]; } getWordsByCategory(category) { let db = []; if (this.dbAvailable) { if (category === 'IRREGULARS') db = (oxfordWordsDatabase.irregular_verbs || []); if (category === 'PREPOSITIONS') db = (oxfordWordsDatabase.prepositions || []); } const customs = this.customWords.filter(w => w.level === category) .map(w => ({ word: w.word, translation: w.translation })); return [...db, ...customs]; }
+addAllFromLevel(level) { const pool = this.getWordsByLevel(level); if (!pool.length) return this.showNotification(Нет слов уровня ${level} для добавления, 'warning'); let added = 0; pool.forEach(w => { if (!this.learningWords.find(x => x.word === w.word)) { this.learningWords.push(this.createLearningWord(w.word, w.translation, level)); added++; } }); if (added === 0) this.showNotification('Все слова этого уровня уже добавлены', 'info'); else { this.saveData(); this.updateUI(); this.showNotification(Добавлено ${added} слов из уровня ${level}, 'success'); } this.renderLevelWords(level); } removeAllFromLevel(level) { const inLevel = this.learningWords.filter(w => w.level === level).length; if (inLevel === 0) return this.showNotification('В изучении нет слов этого уровня', 'info'); const before = this.learningWords.length; this.learningWords = this.learningWords.filter(w => w.level !== level); const removed = before - this.learningWords.length; this.saveData(); this.updateUI(); this.showNotification(Удалено ${removed} слов уровня ${level}, 'info'); this.renderLevelWords(level); } addAllFromCategory(category) { const pool = this.getWordsByCategory(category); if (!pool.length) return this.showNotification('Нет слов категории', 'warning'); let added = 0; pool.forEach(w => { if (!this.learningWords.find(x => x.word === w.word)) { this.learningWords.push(this.createLearningWord(w.word, w.translation, category)); added++; } }); if (added === 0) this.showNotification('Все слова этой категории уже добавлены', 'info'); else { this.saveData(); this.updateUI(); this.showNotification(Добавлено ${added} слов из категории, 'success'); } this.renderCategoryWords(category); } removeAllFromCategory(category) { const inCat = this.learningWords.filter(w => w.level === category).length; if (inCat === 0) return this.showNotification('В изучении нет слов этой категории', 'info'); const before = this.learningWords.length; this.learningWords = this.learningWords.filter(w => w.level !== category); const removed = before - this.learningWords.length; this.saveData(); this.updateUI(); this.showNotification(Удалено ${removed} слов категории, 'info'); this.renderCategoryWords(category); } getWordsByLevel(level) { const db = this.dbAvailable ? (oxfordWordsDatabase[level] || []) : []; const customs = this.customWords.filter(w => w.level === level).map(w => ({ word: w.word, translation: w.translation })); return [...db, ...customs]; } getWordsByCategory(category) { let db = []; if (this.dbAvailable) { if (category === 'IRREGULARS') db = (oxfordWordsDatabase.irregular_verbs || []); if (category === 'PREPOSITIONS') db = (oxfordWordsDatabase.prepositions || []); } const customs = this.customWords.filter(w => w.level === category).map(w => ({ word: w.word, translation: w.translation })); return [...db, ...customs]; }
 
-/* STUDY */ createLearningWord(word, translation, level) { return { id: Date.now().toString() + Math.random().toString(36).slice(2), word, translation, level, dateAdded: new Date().toISOString(), isLearned: false, repetitionData: this.defaultRepetitionData() }; } defaultRepetitionData() { return { easeFactor: 2.5, interval: 1, repetitions: 0, nextReview: new Date().toISOString(), lastReview: null, correctAnswers: 0, totalAnswers: 0, difficulty: 0 }; } addToLearning(word, translation, level) { const exists = this.learningWords.find(w => w.word === word); if (exists) { this.showNotification('Слово уже добавлено в изучение', 'warning'); return; } this.learningWords.push(this.createLearningWord(word, translation, level)); this.saveData(); this.updateUI(); this.showNotification('Слово добавлено в изучение', 'success'); if (this.currentLevel) this.renderLevelWords(this.currentLevel); if (this.currentCategory) this.renderCategoryWords(this.currentCategory); } removeFromLearning(word) { this.learningWords = this.learningWords.filter(w => w.word !== word); this.saveData(); this.updateUI(); this.showNotification('Слово убрано из изучения', 'info'); if (this.currentSection === 'learning') this.renderLearningWords(); else if (this.currentLevel) this.renderLevelWords(this.currentLevel); else if (this.currentCategory) this.renderCategoryWords(this.currentCategory); }
+/* STUDY */ createLearningWord(word, translation, level) { return { id: Date.now().toString() + Math.random().toString(36).slice(2), word, translation, level, dateAdded: new Date().toISOString(), isLearned: false, repetitionData: this.defaultRepetitionData() }; } defaultRepetitionData() { return { easeFactor: 2.5, interval: 1, repetitions: 0, nextReview: new Date().toISOString(), lastReview: null, correctAnswers: 0, totalAnswers: 0, difficulty: 0 }; } addToLearning(word, translation, level) { const exists = this.learningWords.find(w => w.word === word); if (exists) return this.showNotification('Слово уже добавлено в изучение', 'warning'); this.learningWords.push(this.createLearningWord(word, translation, level)); this.saveData(); this.updateUI(); this.showNotification('Слово добавлено в изучение', 'success'); if (this.currentLevel) this.renderLevelWords(this.currentLevel); if (this.currentCategory) this.renderCategoryWords(this.currentCategory); } removeFromLearning(word) { this.learningWords = this.learningWords.filter(w => w.word !== word); this.saveData(); this.updateUI(); this.showNotification('Слово убрано из изучения', 'info'); if (this.currentSection === 'learning') this.renderLearningWords(); else if (this.currentLevel) this.renderLevelWords(this.currentLevel); else if (this.currentCategory) this.renderCategoryWords(this.currentCategory); } markAsLearned(word) { const w = this.learningWords.find(x => x.word === word); if (w) { w.isLearned = true; w.dateLearned = new Date().toISOString(); this.saveData(); this.updateUI(); this.showNotification('Слово отмечено как изученное', 'success'); this.renderLearningWords(); } }
 
 renderLearningWords() { const learningWordsList = document.getElementById('learningWordsList'); const learningCount = document.getElementById('learningCount'); if (!learningWordsList) return;
 
@@ -314,14 +283,24 @@ this.currentReviewWords = this.sessionQueue.slice();
 this.renderStudyUI();
 }
 
-buildPracticeQueue() { const now = new Date(); const active = this.learningWords.filter(w => !w.isLearned); const due = active.filter(w => new Date(w.repetitionData.nextReview) <= now); due.sort((a, b) => { if (a.repetitionData.difficulty !== b.repetitionData.difficulty) return b.repetitionData.difficulty - a.repetitionData.difficulty; return new Date(a.repetitionData.nextReview) - new Date(b.repetitionData.nextReview); }); if (this.practiceMode === 'scheduled') return due;
+buildPracticeQueue() { const now = new Date(); const active = this.learningWords.filter(w => !w.isLearned);
+
+const due = active.filter(w => new Date(w.repetitionData.nextReview) <= now);
+due.sort((a, b) => {
+  if (a.repetitionData.difficulty !== b.repetitionData.difficulty) {
+    return b.repetitionData.difficulty - a.repetitionData.difficulty;
+  }
+  return new Date(a.repetitionData.nextReview) - new Date(b.repetitionData.nextReview);
+});
+if (this.practiceMode === 'scheduled') return due;
 
 const notDue = active.filter(w => new Date(w.repetitionData.nextReview) > now);
 notDue.sort((a, b) => {
   const accA = a.repetitionData.totalAnswers ? (a.repetitionData.correctAnswers / a.repetitionData.totalAnswers) : 0;
   const accB = b.repetitionData.totalAnswers ? (b.repetitionData.correctAnswers / b.repetitionData.totalAnswers) : 0;
-  if (a.repetitionData.difficulty !== b.repetitionData.difficulty)
+  if (a.repetitionData.difficulty !== b.repetitionData.difficulty) {
     return b.repetitionData.difficulty - a.repetitionData.difficulty;
+  }
   return accA - accB;
 });
 const combined = [...due, ...notDue];
@@ -346,7 +325,6 @@ const accuracy = currentWord.repetitionData.totalAnswers > 0
 
 const progress = this.currentReviewIndex + 1;
 const total = this.currentReviewWords.length;
-
 const imgUrl = this.buildPrimaryImageUrl(currentWord.word);
 
 learningWordsList.innerHTML = `
@@ -399,7 +377,6 @@ const shuffled = this.shuffle(options);
 
 const progress = this.currentReviewIndex + 1;
 const total = this.currentReviewWords.length;
-
 const imgUrl = this.buildPrimaryImageUrl(currentWord.word);
 
 learningWordsList.innerHTML = `
@@ -537,11 +514,11 @@ const word = wordInput.value.trim().toLowerCase();
 const translation = translationInput.value.trim();
 const level = levelSelect.value;
 
-if (!word || !translation) { this.showNotification('Заполните все поля', 'error'); return; }
+if (!word || !translation) return this.showNotification('Заполните все поля', 'error');
 
 const existsInDatabase = this.existsInDb(word);
 const existsInCustom = this.customWords.some(w => w.word === word);
-if (existsInDatabase || existsInCustom) { this.showNotification('Это слово уже существует', 'warning'); return; }
+if (existsInDatabase || existsInCustom) return this.showNotification('Это слово уже существует', 'warning');
 
 const newWord = { id: Date.now().toString() + Math.random().toString(36).slice(2), word, translation, level, dateAdded: new Date().toISOString(), isCustom: true };
 this.customWords.push(newWord);
@@ -553,10 +530,10 @@ this.showNotification('Слово добавлено', 'success');
 wordInput.value = '';
 translationInput.value = '';
 levelSelect.value = 'A1';
-} addBulkWords() { const bulkLevel = document.getElementById('bulkLevel').value; const text = document.getElementById('bulkTextarea').value; if (!text.trim()) { this.showNotification('Вставьте строки со словами', 'warning'); return; }
+} addBulkWords() { const bulkLevel = document.getElementById('bulkLevel').value; const text = document.getElementById('bulkTextarea').value; if (!text.trim()) return this.showNotification('Вставьте строки со словами', 'warning');
 
 const parsed = this.parseBulkText(text);
-if (parsed.length === 0) { this.showNotification('Не удалось распознать слова', 'warning'); return; }
+if (parsed.length === 0) return this.showNotification('Не удалось распознать слова', 'warning');
 
 let added = 0, skipped = 0;
 parsed.forEach(item => {
@@ -572,7 +549,7 @@ parsed.forEach(item => {
 this.saveData(); this.renderCustomWords(); this.updateUI();
 this.showNotification(`Добавлено: ${added}, пропущено (уже есть): ${skipped}`, 'info');
 document.getElementById('bulkTextarea').value = '';
-} parseBulkText(text) { // Lines; collect as "current english" and accumulating russian until next '-' const lines = text.split(/\r?\n/); const result = []; let current = null; for (let raw of lines) { const line = raw.trim(); if (!line) continue; // Look for "eng - ..." const dashIdx = line.indexOf(' - '); if (dashIdx !== -1) { // push previous if (current && current.word && current.translations.length) { // normalize commas and trim each current.translations = current.translations.join(',').split(',').map(s => s.trim()).filter(Boolean); result.push(current); } const eng = line.slice(0, dashIdx).trim(); const rusPart = line.slice(dashIdx + 3).trim(); current = { word: eng, translations: rusPart ? rusPart.split(',').map(s => s.trim()) : [] }; } else { // continuation translations (comma separated) if (current) { current.translations.push(...line.split(',').map(s => s.trim())); } } } if (current && current.word && current.translations.length) { current.translations = current.translations.join(',').split(',').map(s => s.trim()).filter(Boolean); result.push(current); } return result; } existsInDb(word) { if (!this.dbAvailable) return false; const inLevels = ['A1','A2','B1','B2','C1','C2'].some(l => (oxfordWordsDatabase[l] || []).some(w => w.word === word)); const inIr = (oxfordWordsDatabase.irregular_verbs || []).some(w => w.word === word); const inPrep = (oxfordWordsDatabase.prepositions || []).some(w => w.word === word); return inLevels || inIr || inPrep; } removeCustomWord(wordId) { this.customWords = this.customWords.filter(w => w.id !== wordId); this.saveData(); this.renderCustomWords(); this.updateUI(); this.showNotification('Слово удалено', 'info'); } renderCustomWords() { const customWordsContainer = document.getElementById('customWords'); if (!customWordsContainer) return;
+} parseBulkText(text) { const lines = text.split(/\r?\n/); const result = []; let current = null; for (let raw of lines) { const line = raw.trim(); if (!line) continue; const dashIdx = line.indexOf(' - '); if (dashIdx !== -1) { if (current && current.word && current.translations.length) { current.translations = current.translations.join(',').split(',').map(s => s.trim()).filter(Boolean); result.push(current); } const eng = line.slice(0, dashIdx).trim(); const rusPart = line.slice(dashIdx + 3).trim(); current = { word: eng, translations: rusPart ? rusPart.split(',').map(s => s.trim()) : [] }; } else { if (current) current.translations.push(...line.split(',').map(s => s.trim())); } } if (current && current.word && current.translations.length) { current.translations = current.translations.join(',').split(',').map(s => s.trim()).filter(Boolean); result.push(current); } return result; } existsInDb(word) { if (!this.dbAvailable) return false; const inLevels = ['A1','A2','B1','B2','C1','C2'].some(l => (oxfordWordsDatabase[l] || []).some(w => w.word === word)); const inIr = (oxfordWordsDatabase.irregular_verbs || []).some(w => w.word === word); const inPrep = (oxfordWordsDatabase.prepositions || []).some(w => w.word === word); return inLevels || inIr || inPrep; } removeCustomWord(wordId) { this.customWords = this.customWords.filter(w => w.id !== wordId); this.saveData(); this.renderCustomWords(); this.updateUI(); this.showNotification('Слово удалено', 'info'); } renderCustomWords() { const customWordsContainer = document.getElementById('customWords'); if (!customWordsContainer) return;
 
 if (this.customWords.length === 0) {
   customWordsContainer.innerHTML = `
@@ -637,7 +614,7 @@ try {
 
 /* UI + NOTIFS */ updateUI() { const learningCount = document.getElementById('learningCount'); if (learningCount) learningCount.textContent = ${this.learningWords.length} слов;
 
-// Level counts
+// Levels count
 document.querySelectorAll('.level-card[data-level]').forEach(card => {
   const level = card.dataset.level;
   const wordCount = card.querySelector('.word-count');
@@ -646,7 +623,7 @@ document.querySelectorAll('.level-card[data-level]').forEach(card => {
   const total = dbWords + customWords;
   if (wordCount) wordCount.textContent = `${total} слов`;
 });
-// Category counts
+// Categories count
 const irregularCount = (this.dbAvailable ? (oxfordWordsDatabase.irregular_verbs || []).length : 0) + this.customWords.filter(w => w.level === 'IRREGULARS').length;
 const prepCount = (this.dbAvailable ? (oxfordWordsDatabase.prepositions || []).length : 0) + this.customWords.filter(w => w.level === 'PREPOSITIONS').length;
 const catIr = document.querySelector('[data-category="IRREGULARS"] .word-count');
@@ -700,7 +677,7 @@ migrateExistingWords() { let migrated = false; this.learningWords.forEach(w => {
 
 const totalLearning = this.learningWords.length;
 const totalLearned = this.learningWords.filter(w => w.isLearned).length;
-const levels = ['A1','A2','B1','B2','C1','C2','IRREGULARS','PREPOSITIONS'];
+const levels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'IRREGULARS', 'PREPOSITIONS'];
 
 const levelCards = levels.map(lvl => {
   let dbTotal = 0;
@@ -733,77 +710,6 @@ el.innerHTML = `
   </div>
   ${levelCards}`;
 }
-
-/* GAME: Endless Runner (Racing) */ raceStart() { if (!this.race.canvas) return; if (this.race.running && !this.race.paused) return; this.race.running = true; this.race.paused = false; if (!this.race.raf) this.raceLoop(); } raceTogglePause() { this.race.paused = !this.race.paused; if (!this.race.paused && this.race.running) this.raceLoop(); } raceReset() { cancelAnimationFrame(this.race.raf); this.race.raf = null; this.race.running = false; this.race.paused = false; this.race.speed = 2; this.race.distance = 0; this.race.correctNeeded = 0; this.race.lastCheckpoint = 0; this.race.obstacles = []; this.race.player = { x: 30, y: 160, w: 20, h: 20, vy: 0, onGround: true }; this.raceClear(); this.raceDraw(); } raceJump() { if (!this.race.running || this.race.paused) return; if (this.race.player.onGround) { this.race.player.vy = -6.5; this.race.player.onGround = false; } } raceSpawnObstacle() { const y = 170; const h = 15; const w = 15; this.race.obstacles.push({ x: this.race.canvas.width + 10, y, w, h }); } raceLoop() { if (!this.race.running || this.race.paused) return; this.raceUpdate(); this.raceDraw(); this.race.raf = requestAnimationFrame(() => this.raceLoop()); } raceUpdate() { // Physics const p = this.race.player; p.vy += 0.35; // gravity p.y += p.vy; if (p.y >= 160) { p.y = 160; p.vy = 0; p.onGround = true; }
-
-// Obstacles
-if (Math.random() < 0.03) this.raceSpawnObstacle();
-this.race.obstacles.forEach(o => o.x -= this.race.speed);
-this.race.obstacles = this.race.obstacles.filter(o => o.x + o.w > 0);
-
-// Collision
-for (const o of this.race.obstacles) {
-  if (this.rectsOverlap(p, o)) {
-    this.racePauseForQuiz();
-    break;
-  }
-}
-
-// Distance & speed
-this.race.distance += this.race.speed;
-if (this.race.distance - this.race.lastCheckpoint > 800) {
-  this.racePauseForQuiz();
-}
-// Speed up slowly
-this.race.speed = Math.min(12, this.race.speed + 0.0015);
-} raceDraw() { const ctx = this.race.ctx, c = this.race.canvas; ctx.clearRect(0,0,c.width,c.height); // ground ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, 180, c.width, 2); // player ctx.fillStyle = '#10b981'; ctx.fillRect(this.race.player.x, this.race.player.y, this.race.player.w, this.race.player.h); // obstacles ctx.fillStyle = '#ef4444'; this.race.obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h)); // HUD ctx.fillStyle = '#64748b'; ctx.font = '12px Inter, sans-serif'; ctx.fillText(Скорость: ${this.race.speed.toFixed(1)} | Дистанция: ${Math.floor(this.race.distance)}, 8, 14); } rectsOverlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
-
-racePauseForQuiz() { if (!this.race.running) return; this.race.paused = true; this.race.correctNeeded = 3; this.race.lastCheckpoint = this.race.distance; // Show quiz modal const modal = document.getElementById('raceQuizModal'); const content = document.getElementById('raceQuizContent'); if (modal && content) { modal.classList.remove('hidden'); content.innerHTML = <div class="text-center"><h3>Ответьте правильно на 3 слова</h3></div>; this.raceNextMiniQuiz(); } } raceNextMiniQuiz() { const content = document.getElementById('raceQuizContent'); const pool = this.getAllWordsPool(); if (pool.length === 0) { content.innerHTML = <div class="empty-state"><i class="fas fa-book-open"></i><h3>Нет слов в активном словаре</h3><p>Добавьте слова и вернитесь в игру</p></div>; return; } // pick random word from learningWords if possible const learningPool = this.learningWords.filter(w => !w.isLearned); const base = (learningPool.length ? learningPool : pool); const currentWord = base[Math.floor(Math.random() * base.length)];
-
-const direction = Math.random() < 0.5 ? 'EN_RU' : 'RU_EN';
-const questionText = direction === 'EN_RU' ? currentWord.word : currentWord.translation;
-const correct = direction === 'EN_RU' ? currentWord.translation : currentWord.word;
-const correctEnglish = currentWord.word;
-
-const options = this.buildQuizOptions(currentWord, direction);
-const shuffled = this.shuffle(options);
-
-content.innerHTML = `
-  <div class="quiz-container">
-    <div class="quiz-question">${questionText}</div>
-    <div class="quiz-sub">Выберите правильный вариант</div>
-    <div class="quiz-options">
-      ${shuffled.map((opt) => `
-        <div class="quiz-option" data-value="${this.safe(opt)}">${opt}</div>
-      `).join('')}
-    </div>
-  </div>`;
-Array.from(content.querySelectorAll('.quiz-option')).forEach(el => {
-  el.addEventListener('click', () => {
-    const chosen = el.dataset.value;
-    const isCorrect = chosen === correct;
-    if (isCorrect) {
-      el.classList.add('correct');
-      this.playAudio(correctEnglish).catch(()=>{});
-      this.race.correctNeeded -= 1;
-      if (this.race.correctNeeded <= 0) {
-        // close modal and resume
-        document.getElementById('raceQuizModal').classList.add('hidden');
-        this.race.paused = false;
-        this.raceLoop();
-      } else {
-        setTimeout(() => this.raceNextMiniQuiz(), 400);
-      }
-    } else {
-      el.classList.add('wrong');
-      const options = Array.from(content.querySelectorAll('.quiz-option'));
-      const corr = options.find(o => o.dataset.value === correct);
-      if (corr) corr.classList.add('correct');
-      setTimeout(() => this.raceNextMiniQuiz(), 500);
-    }
-  }, { once: true });
-});
-} raceClear() { const ctx = this.race.ctx, c = this.race.canvas; ctx.clearRect(0,0,c.width,c.height); }
 
 /* HELPERS */ shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; } }
 
