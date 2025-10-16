@@ -756,7 +756,7 @@ if (this.race.distance - this.race.lastCheckpoint > 800) {
 }
 // Speed up slowly
 this.race.speed = Math.min(12, this.race.speed + 0.0015);
-} raceDraw() { const ctx = this.race.ctx, c = this.race.canvas; ctx.clearRect(0,0,c.width,c.height); // ground ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, 180, c.width, 2); // player ctx.fillStyle = '#10b981'; ctx.fillRect(this.race.player.x, this.race.player.y, this.race.player.w, this.race.player.h); // obstacles ctx.fillStyle = '#ef4444'; this.race.obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h)); // HUD ctx.fillStyle = '#64748b'; ctx.font = '12px Inter, sans-serif'; ctx.fillText(Скорость: ${this.race.speed.toFixed(1)} | Дистанция: ${Math.floor(this.race.distance)}, 8, 14); } rectsOverlap(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+} raceDraw() { const ctx = this.race.ctx, c = this.race.canvas; ctx.clearRect(0,0,c.width,c.height); // ground ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, 180, c.width, 2); // player ctx.fillStyle = '#10b981'; ctx.fillRect(this.race.player.x, this.race.player.y, this.race.player.w, this.race.player.h); // obstacles ctx.fillStyle = '#ef4444'; this.race.obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h)); // HUD ctx.fillStyle = '#64748b'; ctx.font = '12px Inter, sans-serif'; ctx.fillText(Скорость: ${this.race.speed.toFixed(1)} | Дистанция: ${Math.floor(this.race.distance)}, 8, 14); } rectsOverlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
 
 racePauseForQuiz() { if (!this.race.running) return; this.race.paused = true; this.race.correctNeeded = 3; this.race.lastCheckpoint = this.race.distance; // Show quiz modal const modal = document.getElementById('raceQuizModal'); const content = document.getElementById('raceQuizContent'); if (modal && content) { modal.classList.remove('hidden'); content.innerHTML = <div class="text-center"><h3>Ответьте правильно на 3 слова</h3></div>; this.raceNextMiniQuiz(); } } raceNextMiniQuiz() { const content = document.getElementById('raceQuizContent'); const pool = this.getAllWordsPool(); if (pool.length === 0) { content.innerHTML = <div class="empty-state"><i class="fas fa-book-open"></i><h3>Нет слов в активном словаре</h3><p>Добавьте слова и вернитесь в игру</p></div>; return; } // pick random word from learningWords if possible const learningPool = this.learningWords.filter(w => !w.isLearned); const base = (learningPool.length ? learningPool : pool); const currentWord = base[Math.floor(Math.random() * base.length)];
 
@@ -805,6 +805,6 @@ Array.from(content.querySelectorAll('.quiz-option')).forEach(el => {
 });
 } raceClear() { const ctx = this.race.ctx, c = this.race.canvas; ctx.clearRect(0,0,c.width,c.height); }
 
-}
+/* HELPERS */ shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; } }
 
 // Init document.addEventListener('DOMContentLoaded', () => { window.app = new EnglishWordsApp(); });
