@@ -256,7 +256,7 @@
       </div>
     </section>
 
-    <!-- Games (updated with covers and Start buttons only) -->
+    <!-- Games -->
     <section id="games" class="content-section">
       <div class="section-header">
         <h2>Игры</h2>
@@ -265,7 +265,7 @@
       <div class="games-grid">
         <!-- RACE -->
         <div class="game-card">
-          <img src="race.jpg" alt="Гонки" class="game-cover">
+          <img src="race.jpg" alt="Гонки" class="game-cover" onerror="this.src='nophoto.jpg'">
           <div class="game-info">
             <h3>Гонки — бесконечно</h3>
             <p>Уворачивайся от трафика. Чтобы начать и продолжить — ответь правильно на 3 слова.</p>
@@ -275,20 +275,20 @@
 
         <!-- GEOMETRY DASH -->
         <div class="game-card">
-          <img src="dash.jpg" alt="Cube Dash" class="game-cover">
+          <img src="dash.jpg" alt="Cube Dash" class="game-cover" onerror="this.src='nophoto.jpg'">
           <div class="game-info">
             <h3>Cube Dash</h3>
-            <p>Раннер в стиле Geometry Dash. Начало/продолжение — после 3 правильных ответов.</p>
+            <p>Раннер в стиле Geometry Dash. Начало/продолжение — после 3 правильных ответов.</p>
             <button class="btn btn-primary" id="dashStartBtn" data-testid="dash-start-btn">Старт</button>
           </div>
         </div>
 
-        <!-- 2048 (подключим следующим шагом) -->
+        <!-- 2048 -->
         <div class="game-card">
-          <img src="2048.jpg" alt="2048" class="game-cover">
+          <img src="2048.jpg" alt="2048" class="game-cover" onerror="this.src='nophoto.jpg'">
           <div class="game-info">
             <h3>2048</h3>
-            <p>Классическая головоломка. (Подключим следующим шагом)</p>
+            <p>Классическая головоломка. Собери плитку 2048!</p>
             <button class="btn btn-primary" id="game2048StartBtn" data-testid="2048-start-btn">Старт</button>
           </div>
         </div>
