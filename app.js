@@ -1491,246 +1491,98 @@ class EnglishWordsApp {
     };
   }
 
-  open2048Game() {
-    const overlay = document.createElement('div');
-    Object.assign(overlay.style, {
-      position: 'fixed', inset: 0, zIndex: 999999,
-      background: 'radial-gradient(1200px 800px at 50% -10%, #0a1a26 0%, #070e16 60%, #04080d 100%)',
-      display: 'grid', placeItems: 'center', touchAction: 'none'
-    });
-    const topBar = document.createElement('div');
-    Object.assign(topBar.style, {
-      position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
-      width: 'min(96vw, 520px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      zIndex: 1000000, pointerEvents: 'auto', padding: '0 10px'
-    });
-    const scoreDisplay = document.createElement('div');
-    scoreDisplay.innerHTML = '<div style="background:rgba(0,0,0,.45);padding:8px 12px;border-radius:10px;backdrop-filter:blur(6px);font-weight:700;">Счёт: <span id="game2048Score" style="color:#00d6a1;">0</span></div>';
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '<i class="fas fa-times"></i>';
-    Object.assign(closeBtn.style, {
-      width: '42px', height: '42px', borderRadius: '10px', border: '1px solid rgba(255,255,255,.25)',
-      color: '#fff', background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)', cursor: 'pointer',
-      fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center'
-    });
-    topBar.appendChild(scoreDisplay);
-    topBar.appendChild(closeBtn);
-    const wrap = document.createElement('div');
-    Object.assign(wrap.style, { position: 'relative', width: 'min(96vw, 420px)', aspectRatio: '1 / 1', maxHeight: '96vh' });
-    const canvas = document.createElement('canvas');
-    canvas.width = 480; canvas.height = 480;
-    Object.assign(canvas.style, {
-      width: '100%', height: '100%', display: 'block',
-      borderRadius: '16px', background: '#bbada0',
-      boxShadow: '0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06)'
-    });
-    const gameoverOv = document.createElement('div');
-    Object.assign(gameoverOv.style, {
-      position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
-      background: 'rgba(0,0,0,.75)', padding: '20px', borderRadius: '16px',
-      textAlign: 'center', backdropFilter: 'blur(8px)', fontWeight: '700', display: 'none', zIndex: 7,
-      color: '#fff'
-    });
-    gameoverOv.innerHTML = `
-      <div style="font-size:24px;margin-bottom:10px;">Game Over!</div>
-      <div style="margin-bottom:15px;">Счёт: <span id="game2048FinalScore" style="color:#00d6a1;">0</span></div>
-      <button id="game2048RestartBtn" class="btn btn-primary" style="border:none;background:#00d6a1;color:#fff;padding:10px 20px;border-radius:10px;cursor:pointer;font-weight:800;">
-        Новая игра
-      </button>`;
-    wrap.appendChild(canvas);
-    wrap.appendChild(gameoverOv);
-    overlay.appendChild(topBar);
-    overlay.appendChild(wrap);
-    document.body.appendChild(overlay);
-    const SIZE = 4;
-    const TILE_SIZE = 100;
-    const SPACING = 15;
-    let grid = [];
-    let score = 0;
-    let gameOver = false;
-    const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('game2048Score');
-    const finalScoreEl = document.getElementById('game2048FinalScore');
-    const colors = {
-      2: '#eee4da', 4: '#ede0c8', 8: '#f2b179', 16: '#f59563',
-      32: '#f67c5f', 64: '#f65e3b', 128: '#edcf72', 256: '#edcc61',
-      512: '#edc850', 1024: '#edc53f', 2048: '#edc22e'
-    };
-    function init() {
-      grid = [];
-      for (let i = 0; i < SIZE; i++) {
-        grid[i] = [];
-        for (let j = 0; j < SIZE; j++) {
-          grid[i][j] = 0;
-        }
-      }
-      score = 0;
-      gameOver = false;
-      addTile();
-      addTile();
-      draw();
-    }
-    function addTile() {
-      const empty = [];
-      for (let i = 0; i < SIZE; i++) {
-        for (let j = 0; j < SIZE; j++) {
-          if (grid[i][j] === 0) empty.push({ r: i, c: j });
-        }
-      }
-      if (empty.length === 0) return;
-      const pos = empty[Math.floor(Math.random() * empty.length)];
-      grid[pos.r][pos.c] = Math.random() < 0.9 ? 2 : 4;
-    }
-    function draw() {
-      ctx.fillStyle = '#bbada0';
-      ctx.fillRect(0, 0, 480, 480);
-      for (let i = 0; i < SIZE; i++) {
-        for (let j = 0; j < SIZE; j++) {
-          const x = SPACING + j * (TILE_SIZE + SPACING);
-          const y = SPACING + i * (TILE_SIZE + SPACING);
-          ctx.fillStyle = '#cdc1b4';
-          ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-          const val = grid[i][j];
-          if (val > 0) {
-            ctx.fillStyle = colors[val] || '#3c3a32';
-            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-            ctx.fillStyle = val <= 4 ? '#776e65' : '#f9f6f2';
-            ctx.font = val < 100 ? '40px Arial' : val < 1000 ? '32px Arial' : '24px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(String(val), x + TILE_SIZE / 2, y + TILE_SIZE / 2);
-          }
-        }
-      }
-      scoreEl.textContent = score;
-    }
-    function move(dir) {
-      if (gameOver) return;
-      let moved = false;
-      const temp = JSON.parse(JSON.stringify(grid));
-      if (dir === 'left') {
-        for (let i = 0; i < SIZE; i++) {
-          const row = grid[i].filter(v => v !== 0);
-          for (let k = 0; k < row.length - 1; k++) {
-            if (row[k] === row[k + 1]) {
-              row[k] *= 2;
-              score += row[k];
-              row.splice(k + 1, 1);
-            }
-          }
-          while (row.length < SIZE) row.push(0);
-          grid[i] = row;
-        }
-      } else if (dir === 'right') {
-        for (let i = 0; i < SIZE; i++) {
-          const row = grid[i].filter(v => v !== 0);
-          for (let k = row.length - 1; k > 0; k--) {
-            if (row[k] === row[k - 1]) {
-              row[k] *= 2;
-              score += row[k];
-              row.splice(k - 1, 1);
-              k--;
-            }
-          }
-          while (row.length < SIZE) row.unshift(0);
-          grid[i] = row;
-        }
-      } else if (dir === 'up') {
-        for (let j = 0; j < SIZE; j++) {
-          const col = [];
-          for (let i = 0; i < SIZE; i++) col.push(grid[i][j]);
-          const filtered = col.filter(v => v !== 0);
-          for (let k = 0; k < filtered.length - 1; k++) {
-            if (filtered[k] === filtered[k + 1]) {
-              filtered[k] *= 2;
-              score += filtered[k];
-              filtered.splice(k + 1, 1);
-            }
-          }
-          while (filtered.length < SIZE) filtered.push(0);
-          for (let i = 0; i < SIZE; i++) grid[i][j] = filtered[i];
-        }
-      } else if (dir === 'down') {
-        for (let j = 0; j < SIZE; j++) {
-          const col = [];
-          for (let i = 0; i < SIZE; i++) col.push(grid[i][j]);
-          const filtered = col.filter(v => v !== 0);
-          for (let k = filtered.length - 1; k > 0; k--) {
-            if (filtered[k] === filtered[k - 1]) {
-              filtered[k] *= 2;
-              score += filtered[k];
-              filtered.splice(k - 1, 1);
-              k--;
-            }
-          }
-          while (filtered.length < SIZE) filtered.unshift(0);
-          for (let i = 0; i < SIZE; i++) grid[i][j] = filtered[i];
-        }
-      }
-      for (let i = 0; i < SIZE; i++) {
-        for (let j = 0; j < SIZE; j++) {
-          if (temp[i][j] !== grid[i][j]) {
-            moved = true;
-            break;
-          }
-        }
-        if (moved) break;
-      }
-      if (moved) {
-        addTile();
-        draw();
-        if (!canMove()) {
-          gameOver = true;
-          finalScoreEl.textContent = score;
-          gameoverOv.style.display = 'block';
-        }
-      }
-    }
-    function canMove() {
-      for (let i = 0; i < SIZE; i++) {
-        for (let j = 0; j < SIZE; j++) {
-          if (grid[i][j] === 0) return true;
-          if (j < SIZE - 1 && grid[i][j] === grid[i][j + 1]) return true;
-          if (i < SIZE - 1 && grid[i][j] === grid[i + 1][j]) return true;
-        }
-      }
-      return false;
-    }
-    function keyHandler(e) {
-      if (e.code === 'ArrowLeft') { e.preventDefault(); move('left'); }
-      if (e.code === 'ArrowRight') { e.preventDefault(); move('right'); }
-      if (e.code === 'ArrowUp') { e.preventDefault(); move('up'); }
-      if (e.code === 'ArrowDown') { e.preventDefault(); move('down'); }
-    }
-    document.addEventListener('keydown', keyHandler);
-    let touchStartX = 0, touchStartY = 0;
-    canvas.addEventListener('touchstart', e => {
-      const t = e.touches[0];
-      touchStartX = t.clientX;
-      touchStartY = t.clientY;
-    }, { passive: true });
-    canvas.addEventListener('touchend', e => {
-      const t = e.changedTouches[0];
-      const dx = t.clientX - touchStartX;
-      const dy = t.clientY - touchStartY;
-      if (Math.abs(dx) > Math.abs(dy)) {
-        if (dx > 30) move('right');
-        else if (dx < -30) move('left');
-      } else {
-        if (dy > 30) move('down');
-        else if (dy < -30) move('up');
-      }
-    }, { passive: true });
-    document.getElementById('game2048RestartBtn').addEventListener('click', () => {
-      gameoverOv.style.display = 'none';
-      init();
-    });
-    closeBtn.onclick = () => {
-      document.removeEventListener('keydown', keyHandler);
-      overlay.remove();
-    };
-    init();
+ function open2048Game() { if ((this.learningWords || []).filter(w => !w.isLearned).length < 4) { this.showNotification('Чтобы играть, добавьте минимум 4 слова в «Изучаю»', 'warning'); return; }
+
+const overlay = document.createElement('div'); Object.assign(overlay.style, { position: 'fixed', inset: 0, zIndex: 999999, background: 'radial-gradient(1200px 800px at 50% -10%, #0a1a26 0%, #070e16 60%, #04080d 100%)', display: 'grid', placeItems: 'center', touchAction: 'none' });
+
+// Topbar const topBar = document.createElement('div'); Object.assign(topBar.style, { position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)', width: 'min(96vw, 900px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 1000000, pointerEvents: 'auto', gap: '10px', padding: '0 10px' });
+
+const pauseQuizBtn = document.createElement('button'); pauseQuizBtn.textContent = 'Пауза/Квиз'; Object.assign(pauseQuizBtn.style, { height: '42px', borderRadius: '10px', border: '1px solid rgba(255,255,255,.25)', color: '#fff', background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)', cursor: 'pointer', fontSize: '14px', padding: '0 14px', fontWeight: '800' });
+
+const closeBtn = document.createElement('button'); closeBtn.innerHTML = '<i class="fas fa-times"></i>'; Object.assign(closeBtn.style, { width: '42px', height: '42px', borderRadius: '10px', border: '1px solid rgba(255,255,255,.25)', color: '#fff', background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' });
+
+topBar.appendChild(pauseQuizBtn); topBar.appendChild(closeBtn);
+
+// Wrapper под игру (соотношение 9:16 как у мобилки) const wrap = document.createElement('div'); Object.assign(wrap.style, { position: 'relative', width: 'min(96vw, 900px)', aspectRatio: '9 / 16', maxHeight: '96vh', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06)', background: 'linear-gradient(#0e1520, #0a111a)' });
+
+// Квиз-модалка (оверлей) const quizModal = document.createElement('div'); Object.assign(quizModal.style, { position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(0,0,0,.55)', borderRadius: '16px', zIndex: 8 });
+
+const quizCard = document.createElement('div'); Object.assign(quizCard.style, { background: 'rgba(0,0,0,.55)', border: '1px solid rgba(255,255,255,.15)', padding: '14px 16px', borderRadius: '12px', textAlign: 'center', fontWeight: '800', minWidth: '60%', color: '#fff' });
+
+const quizContent = document.createElement('div'); quizCard.appendChild(quizContent); quizModal.appendChild(quizCard);
+
+// iframe с Subway Surfers (через srcdoc + base href и скрипты) const iframe = document.createElement('iframe'); Object.assign(iframe.style, { width: '100%', height: '100%', border: '0', display: 'block', background: '#000' }); iframe.setAttribute('allow', 'fullscreen');
+
+const srcdocHtml = `<!DOCTYPE html>
+
+<html> <head> <base href="https://rawcdn.githack.com/genizy/subway-surfers/829234f4d9f0bc46347e67b0a8d3b033dc70a589/"> <meta charset="utf-8" /> <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /> <title>Subway Surfers</title> <link rel="icon" href="img/FirstAvatar.png"> <script type="text/javascript" src="4399.z.js"></script> <script> window.config = { loader: "unity", debug: false, maxRatio: 16 / 9, minRatio: 9 / 16, title: "Subway Surfers: San Francisco", unityVersion: "2019.4.18f1", unityWebglBuildUrl: "Build/SanFrancisco.json", fileSize: 35, cachedDecompressedFileSizes: { "SanFrancisco.asm.code.unityweb": 9077143, "SanFrancisco.asm.framework.unityweb": 86369, "SanFrancisco.asm.memory.unityweb": 951447, "SanFrancisco.data.unityweb": 18323917, "SanFrancisco.wasm.code.unityweb": 7279617, "SanFrancisco.wasm.framework.unityweb": 90693 } }; </script> </head> <body style="margin:0; background:#000;"> <script src="master-loader.js"></script> </body> </html>`;
+iframe.srcdoc = srcdocHtml;
+
+wrap.appendChild(quizModal); // сначала показываем квиз; сам iframe добавим после прохождения ворот overlay.appendChild(topBar); overlay.appendChild(wrap); document.body.appendChild(overlay);
+
+const appRef = this;
+
+function showGate(onSuccess) { let needed = 3, count = 0;
+
+// Обновление карточки квиза
+function updateCard() {
+  const pool = (appRef.learningWords || []).filter(w => !w.isLearned);
+  if (!pool.length) {
+    quizContent.innerHTML = `
+      <div class="quiz-container">
+        <div class="quiz-question" style="margin-bottom:8px;">Недостаточно слов</div>
+        <div class="quiz-sub" style="opacity:.8;">Добавьте слова в «Изучаю»</div>
+      </div>`;
+    return;
   }
+  const word = pool[Math.floor(Math.random() * pool.length)];
+  const direction = Math.random() < 0.5 ? 'EN_RU' : 'RU_EN';
+  const questionText = direction === 'EN_RU' ? word.word : word.translation;
+  const correct = direction === 'EN_RU' ? word.translation : word.word;
+  const options = appRef.buildQuizOptions(word, direction);
+  const shuffled = appRef.shuffle(options);
+
+  quizContent.innerHTML = `
+    <div style="font-weight:700;margin-bottom:6px;">Ответьте правильно на 3 слова, чтобы продолжить</div>
+    <div style="font-size:12px;color:#cbd5e1;margin-bottom:10px;">Правильных ответов: ${count}/${needed}</div>
+    <div class="quiz-container">
+      <div class="quiz-question">${questionText} ${direction === 'EN_RU' ? `<button class="action-btn play-btn" style="margin-left:10px;border:none;background:transparent;color:#fff;cursor:pointer;" onclick="window.parent && window.parent.app ? window.parent.app.playAudio('${appRef.safeAttr(word.word)}') : null"><i class="fas fa-volume-up"></i></button>` : ''}</div>
+      <div class="quiz-sub">Выберите правильный вариант</div>
+      <div class="quiz-options" id="subwayQuizOpts">
+        ${shuffled.map(opt => `<div class="quiz-option" data-val="${appRef.safeAttr(opt)}">${opt}</div>`).join('')}
+      </div>
+    </div>`;
+
+  const opts = quizContent.querySelectorAll('.quiz-option');
+  opts.forEach(o => o.addEventListener('click', () => {
+    const chosen = o.getAttribute('data-val');
+    const ok = chosen === correct;
+    o.classList.add(ok ? 'correct' : 'wrong');
+    if (!ok) opts.forEach(x => { if (x.getAttribute('data-val') === correct) x.classList.add('correct'); });
+    if (direction === 'RU_EN' && ok) {
+      appRef.playAudio(word.word);
+    }
+    setTimeout(() => {
+      if (ok) count++;
+      if (count >= needed) {
+        quizModal.style.display = 'none';
+        onSuccess && onSuccess();
+      } else {
+        updateCard();
+      }
+    }, 450);
+  }));
 }
+
+// Показ модалки
+quizModal.style.display = 'grid';
+updateCard();
+}
+
+// Стартовые «квиз-ворота» → по прохождению добавляем iframe (чтобы не грел движок пока нет доступа) showGate(() => { // Только после прохождения квиза добавляем саму игру wrap.appendChild(iframe); });
+
+// Кнопка «Пауза/Квиз» — вызывает тот же квиз; после 3 правильных оверлей исчезнет pauseQuizBtn.onclick = () => { showGate(() => { // ничего не делаем — просто скрыли квиз }); };
+
+closeBtn.onclick = () => { // Удаляем оверлей и все вложенное document.body.removeChild(overlay); }; }
 
 document.addEventListener('DOMContentLoaded', () => { window.app = new EnglishWordsApp(); });
